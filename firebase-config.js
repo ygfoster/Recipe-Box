@@ -1,4 +1,11 @@
-// Firebase コンソールの「プロジェクトの設定 → マイアプリ」にある firebaseConfig を貼り付ける。
-// null のままなら、同期なし(この端末だけに保存)で動く。
+// Firebase コンソールの「プロジェクトの設定 → マイアプリ」にある firebaseConfig。
+// null にすると、同期なし(この端末だけに保存)で動く。
 // ※ この値は公開されても問題ない識別子。データはセキュリティルールで本人だけに制限する。
-window.RB_FIREBASE_CONFIG = null;
+window.RB_FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyB5Xhstp4CravwebakEyd5gBShuntgsBJA',
+  authDomain: 'recipe-box-50179.firebaseapp.com',
+  projectId: 'recipe-box-50179',
+  storageBucket: 'recipe-box-50179.firebasestorage.app',
+  messagingSenderId: '856285359761',
+  appId: '1:856285359761:web:53b1846e6bafd83ae95930',
+};
