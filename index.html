@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <title>Recipe Box</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍽%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="nav" id="nav">
+    <div class="nav-inner">
+      <span class="brand">Recipe Box</span>
+      <button class="btn small primary" id="addBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        追加
+      </button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <h1>レシピ</h1>
+      <p class="sub">お気に入りの味を、ひとつの場所に。</p>
+
+      <div class="search" id="search">
+        <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="q" type="search" placeholder="料理名・材料・カテゴリーで検索" autocomplete="off" spellcheck="false"
+               role="combobox" aria-expanded="false" aria-controls="suggest" aria-autocomplete="list">
+        <button class="clear" id="clearQ" type="button" aria-label="クリア">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+        <ul class="suggest" id="suggest" role="listbox"></ul>
+      </div>
+    </section>
+
+    <nav class="chips" id="chips" aria-label="カテゴリー"></nav>
+    <p class="count" id="count"></p>
+
+    <section class="grid" id="grid"></section>
+
+    <section class="empty" id="empty" hidden>
+      <div class="empty-icon">🍳</div>
+      <h2 id="emptyTitle"></h2>
+      <p id="emptyText"></p>
+      <button class="btn primary" id="emptyAdd" type="button">レシピを追加</button>
+    </section>
+
+    <footer class="foot">
+      <button class="link" id="exportBtn" type="button">バックアップを書き出す</button>
+      <span>·</span>
+      <button class="link" id="importBtn" type="button">読み込む</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </footer>
+  </main>
+
+  <!-- 詳細 -->
+  <div class="overlay" id="detailOv" aria-hidden="true">
+    <article class="sheet detail" id="detail" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+      <button class="icon-btn float" data-close type="button" aria-label="閉じる">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+      </button>
+      <div class="d-img" id="dImg"></div>
+      <div class="d-body">
+        <span class="pill" id="dCat"></span>
+        <h2 id="dTitle"></h2>
+        <div id="dIng" class="d-block"></div>
+        <div id="dSteps" class="d-block"></div>
+        <div id="dMemo" class="d-block"></div>
+        <div class="actions">
+          <button class="btn ghost danger" id="delBtn" type="button">削除</button>
+          <button class="btn primary" id="editBtn" type="button">編集</button>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- 追加・編集 -->
+  <div class="overlay" id="formOv" aria-hidden="true">
+    <form class="sheet form" id="form" role="dialog" aria-modal="true" aria-labelledby="formTitle" novalidate>
+      <header class="sheet-head">
+        <h2 id="formTitle">新しいレシピ</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+
+      <label class="photo" id="photoDrop">
+        <input type="file" id="photoInput" accept="image/*" hidden>
+        <img id="photoPrev" alt="" hidden>
+        <div class="photo-hint" id="photoHint">
+          <svg viewBox="0 0 24 24" width="30" height="30"><path d="M4 8.5A2.5 2.5 0 016.5 6h1.2l1.1-1.6A1.5 1.5 0 0110 3.7h4a1.5 1.5 0 011.2.7L16.3 6h1.2A2.5 2.5 0 0120 8.5v8a2.5 2.5 0 01-2.5 2.5h-11A2.5 2.5 0 014 16.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span>写真を選ぶ、またはドロップ</span>
+        </div>
+        <button type="button" class="photo-remove" id="photoRemove" hidden>写真を外す</button>
+      </label>
+
+      <div class="field">
+        <label for="fName">料理名</label>
+        <input id="fName" maxlength="60" autocomplete="off" placeholder="例：肉じゃが">
+      </div>
+
+      <div class="field">
+        <span class="lbl">カテゴリー</span>
+        <div class="cat-picks" id="catPicks"></div>
+        <input id="fNewCat" maxlength="20" autocomplete="off" placeholder="＋ 新しいカテゴリーを作る">
+      </div>
+
+      <div class="field">
+        <label for="fIng">材料</label>
+        <textarea id="fIng" rows="3" placeholder="1行に1つ（例：じゃがいも 3個）"></textarea>
+      </div>
+      <div class="field">
+        <label for="fSteps">作り方</label>
+        <textarea id="fSteps" rows="4" placeholder="1行に1手順"></textarea>
+      </div>
+      <div class="field">
+        <label for="fMemo">メモ・URL</label>
+        <textarea id="fMemo" rows="2" placeholder="コツ、参考にしたページなど"></textarea>
+      </div>
+
+      <div class="actions">
+        <button class="btn ghost" data-close type="button">キャンセル</button>
+        <button class="btn primary" type="submit">保存</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
