@@ -6,14 +6,21 @@
   <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <title>Recipe Box</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍽%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
   <header class="nav" id="nav">
     <div class="nav-inner">
-      <span class="brand">Recipe Box</span>
+      <span class="brand"><img class="brand-mark" src="icons/icon.svg" alt="" width="22" height="22"><span class="brand-name">Recipe Box</span></span>
+      <span class="nav-spacer"></span>
+      <button class="account-btn" id="accountBtn" type="button" aria-label="アカウントと同期">
+        <span class="avatar" id="avatar"></span>
+        <span class="sync-dot" id="syncDot" data-state="local"></span>
+      </button>
       <button class="btn small primary" id="addBtn" type="button">
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
         追加
@@ -76,13 +83,53 @@
       <button class="btn primary" id="emptyAdd" type="button">レシピを追加</button>
     </section>
 
-    <footer class="foot">
-      <button class="link" id="exportBtn" type="button">バックアップを書き出す</button>
-      <span>·</span>
-      <button class="link" id="importBtn" type="button">読み込む</button>
-      <input type="file" id="importFile" accept="application/json" hidden>
-    </footer>
   </main>
+
+  <!-- 初回:ログイン -->
+  <div class="overlay gate" id="gateOv" aria-hidden="true">
+    <section class="sheet gate-sheet" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+      <img class="gate-mark" src="icons/icon.svg" alt="" width="64" height="64">
+      <h2 id="gateTitle">Recipe Box</h2>
+      <p class="gate-lead">Google でログインすると、Mac と Pixel で<br>同じレシピが使えます。</p>
+      <button class="btn primary wide" id="gateSignIn" type="button">Google でログイン</button>
+      <p class="gate-error" id="gateError" hidden></p>
+      <button class="link" id="gateLocal" type="button">ログインせずに使う(この端末だけに保存)</button>
+    </section>
+  </div>
+
+  <!-- アカウント・同期 -->
+  <div class="overlay" id="accountOv" aria-hidden="true">
+    <section class="sheet account" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+      <header class="sheet-head">
+        <h2 id="accTitle">アカウント</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="acc-body">
+        <div class="acc-status" id="accStatus">
+          <span class="sync-dot" id="accDot" data-state="local"></span>
+          <div class="acc-status-text">
+            <b id="accStatusTitle"></b>
+            <span id="accStatusSub"></span>
+          </div>
+        </div>
+        <div class="acc-user" id="accUser" hidden>
+          <span class="avatar large" id="accAvatar"></span>
+          <div class="acc-user-text"><b id="accName"></b><span id="accEmail"></span></div>
+        </div>
+        <button class="btn primary wide" id="accSignIn" type="button" hidden>Google でログインして同期する</button>
+
+        <ul class="acc-list">
+          <li id="accInstallRow" hidden><button type="button" id="installBtn">ホーム画面に追加<span>アプリのように全画面で使えます</span></button></li>
+          <li><button type="button" id="exportBtn">バックアップを書き出す<span>すべてのレシピを1つのファイルに保存</span></button></li>
+          <li><button type="button" id="importBtn">バックアップを読み込む<span>同じレシピは上書きされます</span></button></li>
+        </ul>
+        <input type="file" id="importFile" accept="application/json" hidden>
+        <button class="btn ghost danger wide" id="signOutBtn" type="button" hidden>ログアウト</button>
+      </div>
+    </section>
+  </div>
 
   <!-- 詳細 -->
   <div class="overlay" id="detailOv" aria-hidden="true">
@@ -109,6 +156,7 @@
               <button type="button" data-d="1" aria-label="増やす">＋</button>
             </div>
           </div>
+          <p class="scale-note" id="scaleNote" hidden></p>
           <ul class="ing" id="dIng"></ul>
         </section>
 
@@ -290,6 +338,7 @@
   <div class="timers" id="timers" aria-live="polite"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -29,7 +29,10 @@ const state = {
   detailId: null,
   servings: 2,
   sugIndex: -1,
+  loaded: false,
+  user: null,
 };
+const HAS_CLOUD = !!window.RB_FIREBASE_CONFIG;
 
 const ICON = {
   play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" fill="currentColor"/></svg>',
@@ -68,6 +71,24 @@ const db = (() => {
     del: (id) => tx('readwrite', (s) => s.delete(id)),
   };
 })();
+
+/* ---------------- 保存先(この端末 or クラウド) ---------------- */
+const MAX_DOC = 950000; // Firestore の1件あたりの上限(1MB)に余裕をもたせる
+const repo = {
+  mode: 'local',
+  cloud: null,
+  async put(r) {
+    if (this.mode !== 'cloud') return db.put(r);
+    if (JSON.stringify(r).length > MAX_DOC) throw new Error('too-large');
+    this.cloud.put(r);
+    evalSync(true);
+  },
+  async del(id) {
+    if (this.mode !== 'cloud') return db.del(id);
+    this.cloud.del(id);
+    evalSync(true);
+  },
+};
 
 /* ---------------- Utils ---------------- */
 // 全角/半角・大文字/小文字・カタカナ/ひらがなの違いを吸収
@@ -112,7 +133,17 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-async function compressImage(file, max = 1400, quality = 0.84) {
+// 同期の上限に収まるよう、大きすぎる写真は画質と大きさを段階的に下げる
+async function compressImage(file, max = 1400, quality = 0.84, limit = 450000) {
+  let out = await drawImage(file, max, quality);
+  for (const [m, q] of [[max, 0.72], [1000, 0.7], [800, 0.65]]) {
+    if (out.length <= limit) break;
+    out = await drawImage(file, m, q);
+  }
+  return out;
+}
+
+async function drawImage(file, max, quality) {
   let src;
   try {
     src = await createImageBitmap(file, { imageOrientation: 'from-image' });
@@ -183,10 +214,22 @@ function normalizeRecipe(r) {
   };
 }
 
+function saveErrorText(e) {
+  return e && e.message === 'too-large'
+    ? '写真が大きすぎて保存できません。写真を減らすか、別の写真にしてください'
+    : '保存できませんでした(容量不足の可能性があります)';
+}
+
 async function saveRecipe(r) {
-  await db.put(r);
+  try {
+    await repo.put(r);
+  } catch (e) {
+    toast(saveErrorText(e));
+    return false;
+  }
   state.recipes = state.recipes.map((x) => (x.id === r.id ? r : x));
   refreshCard(r.id);
+  return true;
 }
 
 /* ---------------- 動画 ---------------- */
@@ -373,7 +416,7 @@ function makeCard(r) {
 
   const body = el('div', 'card-body');
   const meta = el('p');
-  meta.append([r.genre, r.course, r.time ? `${r.time}分` : ''].filter(Boolean).join(' · '));
+  meta.append(el('span', 'meta-text', [r.genre, r.course, r.time ? `${r.time}分` : ''].filter(Boolean).join(' · ')));
   if (r.rating) meta.append(el('span', 'mini-star', `★${r.rating}`));
   body.append(el('h3', null, r.name), meta);
   card.append(imgWrap, body);
@@ -455,14 +498,15 @@ function renderGrid() {
 }
 
 function renderCount(n) {
-  const total = state.recipes.length;
+  const total = state.loaded ? state.recipes.length : 0;
   $('#count').textContent = total ? (n === total ? `${total} 件のレシピ` : `${n} / ${total} 件`) : '';
   $('#toolbar').hidden = !total;
 }
 
 function renderEmpty(n) {
   const empty = $('#empty');
-  if (n) { empty.hidden = true; return; }
+  // 読み込みが終わるまでは「0件」と見せない
+  if (n || !state.loaded) { empty.hidden = true; return; }
   empty.hidden = false;
   const none = !state.recipes.length;
   $('#emptyTitle').textContent = none ? 'まだレシピがありません' : '見つかりませんでした';
@@ -666,13 +710,14 @@ function closeOverlay(ov) {
 
 document.querySelectorAll('.overlay').forEach((ov) => {
   ov.addEventListener('click', (e) => {
+    if (ov.classList.contains('gate')) return; // ログイン画面は外側を押しても閉じない
     if (e.target === ov || e.target.closest('[data-close]')) closeOverlay(ov);
   });
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   const open = [...document.querySelectorAll('.overlay[aria-hidden="false"]')].pop();
-  if (open) closeOverlay(open);
+  if (open && !open.classList.contains('gate')) closeOverlay(open);
 });
 
 /* ---------------- Detail ---------------- */
@@ -793,6 +838,9 @@ function renderIngredients(r, bump) {
     }
     ul.append(li);
   });
+  const note = $('#scaleNote');
+  note.hidden = k === 1;
+  note.textContent = `${r.servings}人分のレシピから換算しています`;
   $('#servingsVal').textContent = `${state.servings}人分`;
   $('#servings [data-d="-1"]').disabled = state.servings <= 1;
   $('#servings [data-d="1"]').disabled = state.servings >= 20;
@@ -968,7 +1016,7 @@ $('#logPhoto').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!f) return;
   try {
-    logPhoto = await compressImage(f, 900, 0.8);
+    logPhoto = await compressImage(f, 900, 0.8, 150000);
     $('#logPhotoBtn').classList.add('has');
     $('#logPhotoLabel').textContent = '📷 追加済み';
   } catch { toast('この画像は読み込めませんでした'); }
@@ -977,8 +1025,12 @@ logForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const r = getRecipe(state.detailId);
   if (!r) return;
-  r.cooked.push({ id: uid(), date: $('#logDate').value || todayStr(), note: $('#logNote').value.trim(), photo: logPhoto });
-  await saveRecipe(r);
+  const entry = { id: uid(), date: $('#logDate').value || todayStr(), note: $('#logNote').value.trim(), photo: logPhoto };
+  r.cooked.push(entry);
+  if (!(await saveRecipe(r))) {
+    r.cooked = r.cooked.filter((c) => c !== entry);
+    return;
+  }
   closeLogForm();
   renderLog(r);
   replay($('#cookedBtn'), 'pop');
@@ -1004,7 +1056,7 @@ delBtn.addEventListener('click', async () => {
   closeOverlay($('#detailOv'));
   if (pip.recipeId === id) closePip();
   const node = cardNodes.get(id);
-  await db.del(id);
+  await repo.del(id);
   state.recipes = state.recipes.filter((r) => r.id !== id);
   const finish = () => { removeCardNode(id); renderChips(); renderGrid(); };
   if (node && !node.hidden) {
@@ -1487,7 +1539,7 @@ function openForm(id = null, preset = {}) {
   $('#fTags').value = r ? r.tags.join(', ') : '';
   $('#fIng').value = r ? r.ingredients : '';
   $('#fSteps').value = r ? r.steps : '';
-  $('#fMemo').value = r ? r.memo : '';
+  $('#fMemo').value = r ? r.memo : preset.memo || '';
   setPhoto(r ? r.photo : null);
   renderGenrePicks();
   renderCoursePicks();
@@ -1544,9 +1596,9 @@ form.addEventListener('submit', async (e) => {
     updatedAt: Date.now(),
   });
   try {
-    await db.put(recipe);
-  } catch {
-    return toast('保存できませんでした(容量不足の可能性があります)');
+    await repo.put(recipe);
+  } catch (err) {
+    return toast(saveErrorText(err));
   }
   if (prev) {
     state.recipes = state.recipes.map((x) => (x.id === prev.id ? recipe : x));
@@ -1600,15 +1652,17 @@ $('#importFile').addEventListener('change', async (e) => {
   try {
     const data = JSON.parse(await file.text());
     const list = (Array.isArray(data) ? data : data.recipes || []).filter((r) => r && r.id && r.name);
+    let ok = 0;
     for (const raw of list) {
       const r = normalizeRecipe(raw);
-      await db.put(r);
+      try { await repo.put(r); } catch { continue; } // 大きすぎる1件があっても残りは読み込む
+      ok++;
       removeCardNode(r.id);
+      state.recipes = state.recipes.filter((x) => x.id !== r.id).concat(r);
     }
-    state.recipes = (await db.all()).map(normalizeRecipe);
     renderChips();
     renderGrid();
-    toast(`${list.length} 件を読み込みました`);
+    toast(ok === list.length ? `${ok} 件を読み込みました` : `${ok} 件を読み込みました(${list.length - ok} 件は大きすぎて読み込めませんでした)`);
   } catch {
     toast('読み込めないファイルです');
   }
@@ -1619,9 +1673,230 @@ const nav = $('#nav');
 const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 60);
 window.addEventListener('scroll', onScroll, { passive: true });
 
-/* ---------------- Init ---------------- */
-(async function init() {
-  syncTools();
+/* ---------------- 同期の状態 ---------------- */
+const SYNC_TEXT = {
+  local: ['この端末だけに保存しています', HAS_CLOUD ? 'ログインすると Mac と Pixel で同期できます' : 'ほかの端末へはバックアップで移せます'],
+  syncing: ['同期しています…', '変更をクラウドに送っています'],
+  synced: ['同期済み', 'ほかの端末でも同じ内容が見られます'],
+  offline: ['オフライン', '変更はこの端末に保存され、つながったときに同期します'],
+  error: ['同期できませんでした', ''],
+};
+const sync = { state: HAS_CLOUD ? 'syncing' : 'local', error: '', fromCache: true, pending: false };
+
+function setSync(s, error = '') {
+  sync.state = s;
+  sync.error = error;
+  $('#syncDot').dataset.state = s;
+  $('#accDot').dataset.state = s;
+  $('#accStatus').dataset.state = s;
+  $('#accStatusTitle').textContent = SYNC_TEXT[s][0];
+  $('#accStatusSub').textContent = error || SYNC_TEXT[s][1];
+  $('#accountBtn').setAttribute('aria-label', `アカウントと同期:${SYNC_TEXT[s][0]}`);
+}
+
+// Firestore の状態とネットワークから、いまの同期状態を決める
+function evalSync(justWrote) {
+  if (repo.mode !== 'cloud') return setSync('local');
+  if (sync.state === 'error' && !justWrote) return;
+  if (justWrote) sync.pending = true;
+  if (!navigator.onLine) return setSync('offline');
+  setSync(sync.pending || sync.fromCache ? 'syncing' : 'synced');
+}
+window.addEventListener('online', () => evalSync());
+window.addEventListener('offline', () => evalSync());
+
+/* ---------------- アカウント ---------------- */
+const PERSON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="4" fill="currentColor"/><path d="M4 20c1.2-4 4.4-6 8-6s6.8 2 8 6z" fill="currentColor"/></svg>';
+
+function paintAvatar(node, user) {
+  node.innerHTML = '';
+  if (user && user.photo) {
+    const img = new Image();
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.onerror = () => { node.textContent = (user.name || user.email || '?').trim().charAt(0).toUpperCase(); };
+    img.src = user.photo;
+    node.append(img);
+  } else if (user) {
+    node.textContent = (user.name || user.email || '?').trim().charAt(0).toUpperCase();
+  } else {
+    node.innerHTML = PERSON;
+  }
+}
+
+function renderAccount() {
+  const u = state.user;
+  paintAvatar($('#avatar'), u);
+  paintAvatar($('#accAvatar'), u);
+  $('#accUser').hidden = !u;
+  $('#accName').textContent = u ? u.name || 'Google アカウント' : '';
+  $('#accEmail').textContent = u ? u.email : '';
+  $('#accSignIn').hidden = !!u || !HAS_CLOUD;
+  $('#signOutBtn').hidden = !u;
+  $('#accInstallRow').hidden = !deferredInstall;
+}
+
+$('#accountBtn').addEventListener('click', () => {
+  renderAccount();
+  openOverlay($('#accountOv'), $('#accountBtn'));
+});
+
+function cloudReady() {
+  return new Promise((resolve, reject) => {
+    if (repo.cloud) return resolve(repo.cloud);
+    const start = Date.now();
+    const iv = setInterval(() => {
+      if (repo.cloud) { clearInterval(iv); resolve(repo.cloud); }
+      else if (Date.now() - start > 10000) { clearInterval(iv); reject(new Error('load-failed')); }
+    }, 100);
+  });
+}
+
+function signInErrorText(e) {
+  const code = (e && (e.code || e.message)) || '';
+  if (code === 'load-failed' || code === 'auth/network-request-failed') return 'インターネットにつながっていないようです。接続を確認してください。';
+  if (code === 'auth/unauthorized-domain') return 'このURLが Firebase の「承認済みドメイン」に登録されていません。';
+  if (code === 'auth/operation-not-allowed') return 'Firebase で Google ログインが有効になっていません。';
+  return `ログインできませんでした(${code})`;
+}
+
+async function signIn(btn, errorEl) {
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'ログインしています…';
+  if (errorEl) errorEl.hidden = true;
+  try {
+    const cloud = await cloudReady();
+    await cloud.signIn();
+  } catch (e) {
+    const msg = signInErrorText(e);
+    if (errorEl) { errorEl.textContent = msg; errorEl.hidden = false; } else toast(msg);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+$('#gateSignIn').addEventListener('click', (e) => signIn(e.currentTarget, $('#gateError')));
+$('#accSignIn').addEventListener('click', (e) => signIn(e.currentTarget));
+$('#gateLocal').addEventListener('click', () => {
+  prefs.set('localOnly', true);
+  closeOverlay($('#gateOv'));
+  loadLocal();
+});
+$('#signOutBtn').addEventListener('click', async () => {
+  closeOverlay($('#accountOv'));
+  try { await repo.cloud.signOut(); } catch { toast('ログアウトできませんでした'); }
+});
+
+function clearRecipes() {
+  cardNodes.forEach((n) => n.remove());
+  cardNodes.clear();
+  state.recipes = [];
+  state.loaded = false;
+  renderChips();
+  renderGrid();
+}
+
+/* ---------------- クラウドとの接続(cloud.js から呼ばれる) ---------------- */
+window.RB = {
+  attachCloud(api) { repo.cloud = api; },
+
+  onAuth(user) {
+    state.user = user;
+    renderAccount();
+    clearRecipes();
+    if (user) {
+      repo.mode = 'cloud';
+      prefs.set('localOnly', false);
+      closeOverlay($('#gateOv'));
+      sync.fromCache = true;
+      sync.pending = false;
+      setSync('syncing');
+      migrateLocal(user);
+    } else {
+      repo.mode = 'local';
+      if (prefs.get('localOnly', false)) loadLocal();
+      else openOverlay($('#gateOv'));
+    }
+  },
+
+  onSnapshot({ changes, fromCache, pending }) {
+    let changed = !state.loaded;
+    for (const c of changes) {
+      const old = getRecipe(c.id);
+      if (c.type === 'removed') {
+        if (!old) continue;
+        state.recipes = state.recipes.filter((x) => x.id !== c.id);
+        removeCardNode(c.id);
+        if (state.detailId === c.id) closeOverlay($('#detailOv'));
+        changed = true;
+        continue;
+      }
+      const r = normalizeRecipe(c.data);
+      if (!old) {
+        state.recipes.push(r);
+        changed = true;
+      } else if (JSON.stringify(old) !== JSON.stringify(r)) {
+        // ほかの端末での変更を反映
+        state.recipes = state.recipes.map((x) => (x.id === r.id ? r : x));
+        refreshCard(r.id);
+        refreshOpenDetail(r);
+        changed = true;
+      }
+    }
+    if (!state.loaded) {
+      state.loaded = true;
+      handlePendingShare();
+    }
+    if (changed) { renderChips(); renderGrid(); }
+    sync.fromCache = fromCache;
+    sync.pending = pending;
+    if (sync.state === 'error' && !fromCache) sync.state = 'syncing';
+    evalSync();
+  },
+
+  onSyncError(err) {
+    const code = (err && err.code) || '';
+    setSync('error', code === 'permission-denied'
+      ? '保存先への権限がありません(セキュリティルールを確認してください)'
+      : `しばらくしてからもう一度試してください(${code || 'unknown'})`);
+  },
+};
+
+function refreshOpenDetail(r) {
+  if ($('#detailOv').getAttribute('aria-hidden') !== 'false' || state.detailId !== r.id) return;
+  renderHero(r);
+  renderPills(r);
+  $('#dTitle').textContent = r.name;
+  renderFav(r);
+  renderStars(r);
+  renderActions(r);
+  $('#dIngBlock').classList.add('no-anim');
+  renderIngredients(r);
+  renderSteps(r);
+  renderTags(r);
+  renderMemo(r);
+  renderLog(r);
+}
+
+// この端末にだけ保存されていたレシピを、初回ログイン時にクラウドへ移す
+async function migrateLocal(user) {
+  const key = 'migrated:' + user.uid;
+  if (prefs.get(key, false)) return;
+  let local = [];
+  try { local = (await db.all()).map(normalizeRecipe); } catch { /* 端末側に保存がない */ }
+  prefs.set(key, true);
+  if (!local.length) return;
+  let ok = 0;
+  for (const r of local) {
+    try { await repo.put(r); ok++; } catch { /* 大きすぎる1件は飛ばす */ }
+  }
+  toast(`この端末のレシピ ${ok} 件をクラウドに移しました`);
+}
+
+async function loadLocal() {
+  repo.mode = 'local';
   try {
     const raw = await db.all();
     state.recipes = raw.map(normalizeRecipe);
@@ -1630,7 +1905,80 @@ window.addEventListener('scroll', onScroll, { passive: true });
   } catch {
     toast('このブラウザでは保存機能が使えません');
   }
+  state.loaded = true;
   renderChips();
   renderGrid();
+  setSync('local');
+  handlePendingShare();
+}
+
+/* ---------------- 共有メニューから開かれたとき ---------------- */
+let pendingShare = null;
+(function readShare() {
+  const p = new URLSearchParams(location.search);
+  if (!['share_url', 'share_text', 'share_title'].some((k) => p.has(k))) return;
+  const all = ['share_url', 'share_text', 'share_title'].map((k) => p.get(k) || '').join(' ').trim();
+  const url = (all.match(/https?:\/\/[^\s]+/) || [])[0] || '';
+  const title = (p.get('share_title') || '').trim();
+  pendingShare = {
+    videoUrl: url,
+    name: /^https?:\/\//.test(title) ? '' : title.slice(0, 80),
+    memo: url ? '' : all,
+  };
+  history.replaceState(null, '', location.pathname);
+})();
+
+function handlePendingShare() {
+  if (!pendingShare) return;
+  const preset = pendingShare;
+  pendingShare = null;
+  openForm(null, preset);
+}
+
+/* ---------------- アプリ化(PWA) ---------------- */
+let deferredInstall = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstall = e;
+  $('#accInstallRow').hidden = false;
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstall = null;
+  $('#accInstallRow').hidden = true;
+  toast('ホーム画面に追加しました');
+});
+$('#installBtn').addEventListener('click', async () => {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  await deferredInstall.userChoice;
+  deferredInstall = null;
+  $('#accInstallRow').hidden = true;
+});
+
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* オフライン対応なしでも動く */ });
+}
+
+/* ---------------- Init ---------------- */
+(function init() {
+  syncTools();
+  renderAccount();
   onScroll();
+  if (!HAS_CLOUD) {
+    loadLocal();
+    return;
+  }
+  setSync('syncing');
+  const s = document.createElement('script');
+  s.type = 'module';
+  s.src = 'cloud.js';
+  document.head.append(s);
+  // 同期の仕組みを読み込めないとき(初回オフラインなど)は、ログイン画面で理由を伝える
+  setTimeout(() => {
+    if (repo.cloud) return;
+    setSync('error', '同期の仕組みを読み込めませんでした');
+    $('#gateError').textContent = 'インターネットにつながっていないようです。接続してから開き直すか、この端末だけで使ってください。';
+    $('#gateError').hidden = false;
+    openOverlay($('#gateOv'));
+  }, 10000);
 })();
