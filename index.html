@@ -178,8 +178,12 @@
         <ul class="edit-chips" id="fridgeChips"></ul>
 
         <div class="fridge-quick" id="fridgeQuickWrap">
-          <h3 class="set-h">よく使う食材</h3>
+          <div class="set-h-row">
+            <h3 class="set-h">よく使う食材</h3>
+            <button class="link small" id="fridgeEditStaples" type="button">編集</button>
+          </div>
           <div class="fridge-quick-list" id="fridgeQuick"></div>
+          <p class="hint" id="fridgeQuickNone" hidden>よく使う食材はすべて入っています</p>
         </div>
 
         <label class="switch-row">
@@ -326,6 +330,19 @@
         </section>
 
         <section class="set-sec">
+          <div class="set-h-row">
+            <h3 class="set-h">よく使う食材</h3>
+            <button class="link small" id="stapleAuto" type="button" hidden>レシピから自動で選ぶ</button>
+          </div>
+          <ul class="edit-chips" id="stapleEdit"></ul>
+          <form class="add-row" data-kind="staples" novalidate>
+            <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="よく使う食材を追加" aria-label="よく使う食材を追加">
+            <button class="btn small" type="submit">追加</button>
+          </form>
+          <p class="hint" id="stapleHint"></p>
+        </section>
+
+        <section class="set-sec">
           <h3 class="set-h">アプリ</h3>
           <ul class="acc-list">
             <li id="accInstallRow"><button type="button" id="installBtn">ホーム画面に追加<span id="installSub">アプリのように全画面で使えます</span></button></li>
@@ -411,8 +428,8 @@
 
         <div class="manage">
           <button class="manage-btn delete" id="delBtn" type="button" aria-label="削除">
+            <span class="mb-pill" aria-hidden="true"><span class="mb-label">本当に削除する</span></span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9.5 3.5h5M6 7l.9 12.6A1.5 1.5 0 0 0 8.4 21h7.2a1.5 1.5 0 0 0 1.5-1.4L18 7M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span class="mb-label">本当に削除する</span>
           </button>
           <button class="manage-btn edit" id="editBtn" type="button" aria-label="編集">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 19.5h4l10.3-10.3a2.83 2.83 0 0 0-4-4L4.5 15.5zM13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -566,11 +583,15 @@
   <!-- レシピ追加(親指が届く右下) -->
   <button class="fab" id="addBtn" type="button" aria-label="レシピを追加">
     <!-- アプリアイコンと同じ器のマーク -->
-    <svg class="bowl" viewBox="116 116 280 280" width="36" height="36" aria-hidden="true">
-      <path d="M146 246h220a110 110 0 0 1-220 0z" fill="currentColor"/>
-      <rect x="200" y="366" width="112" height="18" rx="9" fill="currentColor"/>
-      <path class="steam" d="M218 206c-16-20 16-34 0-58M294 206c-16-20 16-34 0-58" stroke="currentColor" stroke-width="18" fill="none" stroke-linecap="round"/>
-    </svg>
+    <span class="fab-icon" aria-hidden="true">
+      <svg class="bowl" viewBox="116 116 280 280" width="36" height="36">
+        <path d="M146 246h220a110 110 0 0 1-220 0z" fill="currentColor"/>
+        <rect x="200" y="366" width="112" height="18" rx="9" fill="currentColor"/>
+      </svg>
+      <svg class="steam" viewBox="116 116 280 280" width="36" height="36">
+        <path d="M218 206c-16-20 16-34 0-58M294 206c-16-20 16-34 0-58" stroke="currentColor" stroke-width="18" fill="none" stroke-linecap="round"/>
+      </svg>
+    </span>
     <span class="fab-plus" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg></span>
   </button>
 

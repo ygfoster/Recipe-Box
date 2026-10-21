@@ -171,8 +171,30 @@ function moveTabIndicator(instant) {
   ind.style.transform = `translateX(${active.offsetLeft}px)`;
 }
 
-document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.goto)));
+// タブの切り替えも「戻る」に対応させる(Android の標準どおり、献立・買い物から戻るとレシピへ)
+function goTab(tab) {
+  if (tab === state.tab) return;
+  const st = history.state || {};
+  if (tab === 'recipes') {
+    if (st.tab && st.tab !== 'recipes' && !st.ov) { history.back(); return; } // popstate でレシピへ
+    switchTab('recipes');
+    history.replaceState({ tab: 'recipes' }, '');
+  } else if (state.tab === 'recipes') {
+    history.pushState({ tab }, '');
+    switchTab(tab);
+  } else {
+    history.replaceState({ tab }, '');
+    switchTab(tab);
+  }
+}
+
+// 「戻る」で履歴が変わったとき(app.js の popstate から呼ばれる)
+function onHistoryTab(tab) {
+  if (tab !== state.tab) switchTab(tab);
+}
+
+document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => goTab(b.dataset.tab)));
+document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => goTab(b.dataset.goto)));
 window.addEventListener('resize', () => moveTabIndicator(true));
 
 /* ---------------- 献立 ---------------- */
@@ -579,7 +601,7 @@ $('#makeList').addEventListener('click', async () => {
   });
   await writeDocs('shopping', ops);
   renderShopCount();
-  switchTab('shop');
+  goTab('shop');
   toast(`${added}点を買い物リストに入れました`);
 });
 
@@ -607,6 +629,9 @@ function renderShop(animate) {
     : '';
 
   const box = $('#shopList');
+  // 作り直す前の位置を覚えておき、並びが変わった行は今の位置から滑らかに移動させる
+  const before = new Map();
+  box.querySelectorAll('.shop-item').forEach((li) => before.set(li.dataset.id, li.getBoundingClientRect().top));
   box.innerHTML = '';
   box.classList.toggle('animate', !!animate);
   SHOP_GROUPS.forEach((g) => {
@@ -643,6 +668,18 @@ function renderShop(animate) {
   $('#shopEmpty').hidden = state.shop.length > 0;
   $('#shopShare').disabled = !todo.length;
   renderShopCount();
+
+  if (!animate && before.size) {
+    box.querySelectorAll('.shop-item').forEach((li) => {
+      const top = before.get(li.dataset.id);
+      if (top == null) {
+        li.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-out' });
+        return;
+      }
+      const dy = top - li.getBoundingClientRect().top;
+      if (dy) li.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.32,.72,0,1)' });
+    });
+  }
 }
 
 const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9.5 3.5h5M6 7l.9 12.6A1.5 1.5 0 0 0 8.4 21h7.2a1.5 1.5 0 0 0 1.5-1.4L18 7M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -650,6 +687,7 @@ const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9.5 
 function shopRow(s, i) {
   const li = el('li', 'shop-item' + (s.checked ? ' done' : ''));
   li.style.setProperty('--i', Math.min(i, 12));
+  li.dataset.id = s.id;
 
   // 左にスワイプすると出てくる削除ボタン(Apple のメールと同じ)
   const actions = el('div', 'si-actions');
@@ -777,17 +815,16 @@ document.addEventListener('pointerdown', (e) => {
   if (swipeOpen && !swipeOpen.contains(e.target)) closeSwipe(swipeOpen);
 });
 
+// 行を左へ送り出してから消し、下の行は移動で詰める(高さのアニメーションは使わない)
 function removeShopItem(s, li) {
   if (swipeOpen === li) swipeOpen = null;
-  li.style.height = li.offsetHeight + 'px';
   li.classList.add('removing');
   setSwipeX(li, -li.offsetWidth, true);
-  requestAnimationFrame(() => requestAnimationFrame(() => { li.style.height = '0px'; }));
   setTimeout(async () => {
     await writeDocs('shopping', [{ type: 'del', id: s.id }]);
     renderShop();
     toast(`「${s.name}」を削除しました`);
-  }, 320);
+  }, 260);
 }
 
 $('#shopAdd').addEventListener('submit', async (e) => {
@@ -840,4 +877,7 @@ $('#shopShare').addEventListener('click', async () => {
 });
 
 /* ---------------- はじめの表示 ---------------- */
+// 履歴の土台はレシピ画面。前回ほかのタブで閉じていたら、その上に積んで開く
+history.replaceState({ tab: 'recipes' }, '');
+if (state.tab !== 'recipes') history.pushState({ tab: state.tab }, '');
 switchTab(state.tab, true);

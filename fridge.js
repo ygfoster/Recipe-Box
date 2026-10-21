@@ -50,6 +50,18 @@ function knownIngredients() {
   return [...map.values()];
 }
 
+// よく使う食材:設定で決めていればそれを、なければ登録レシピによく出てくるものを使う
+function autoStaples() {
+  return knownIngredients()
+    .filter((it) => !it.season)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ja'))
+    .slice(0, 14)
+    .map((it) => it.name);
+}
+function effectiveStaples() {
+  return Array.isArray(state.settings.staples) ? state.settings.staples : autoStaples();
+}
+
 function searchByFridge() {
   const have = fridge.items.map((x) => ingKey(x));
   if (!have.length) return [];
@@ -99,14 +111,13 @@ function renderFridge(animate) {
 
   // よく使う食材(ワンタップで追加)
   const haveKeys = fridge.items.map((x) => ingKey(x));
-  const quick = knownIngredients()
-    .filter((it) => !it.season && !haveKeys.includes(it.key))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ja'))
-    .slice(0, 14);
+  const quick = effectiveStaples().filter((name) => !haveKeys.includes(ingKey(name)));
   const qbox = $('#fridgeQuick');
   qbox.innerHTML = '';
-  quick.forEach((it) => qbox.append(addChip(it.name)));
-  $('#fridgeQuickWrap').hidden = !quick.length;
+  quick.forEach((name) => qbox.append(addChip(name)));
+  // 全部入れ終わっても「編集」から変えられるよう、見出しは出したままにする
+  $('#fridgeQuickWrap').hidden = !effectiveStaples().length && !Array.isArray(state.settings.staples);
+  $('#fridgeQuickNone').hidden = !!quick.length;
 
   renderFridgeSuggest();
   renderFridgeResults(animate);
@@ -226,6 +237,7 @@ async function addMissingToShop(x) {
 }
 
 $('#fridgeBtn').addEventListener('click', (e) => openFridge(e.currentTarget));
+$('#fridgeEditStaples').addEventListener('click', (e) => openSettings(e.currentTarget));
 $('#fridgeAdd').addEventListener('submit', (e) => {
   e.preventDefault();
   const v = $('#fridgeInput').value;

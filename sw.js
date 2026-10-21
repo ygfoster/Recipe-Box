@@ -1,5 +1,5 @@
 // オフラインでも開けるように、アプリ本体をキャッシュする
-const CACHE = 'rb-v9';
+const CACHE = 'rb-v10';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './cloud.js', './firebase-config.js',
   './plan.js', './fridge.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/icon.svg',

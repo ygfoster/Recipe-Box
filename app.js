@@ -7,6 +7,7 @@
 const DEFAULT_SETTINGS = {
   genres: ['和食', '洋食', '中華'],
   courses: ['メイン', 'サイド', 'スープ'],
+  staples: null, // よく使う食材。null の間はレシピから自動で選ぶ
 };
 // 以前の種類名を新しい呼び方に置き換える
 const COURSE_MAP = { 主菜: 'メイン', 副菜: 'サイド', 汁物: 'スープ', 主食: 'ライス' };
@@ -46,6 +47,7 @@ function normalizeSettings(s) {
   return {
     genres: list(s && s.genres, DEFAULT_SETTINGS.genres),
     courses: list(s && s.courses, DEFAULT_SETTINGS.courses).map((c) => COURSE_MAP[c] || c),
+    staples: s && Array.isArray(s.staples) ? list(s.staples, []) : null,
   };
 }
 state.settings = normalizeSettings(prefs.get('settings', null));
@@ -816,8 +818,18 @@ $('#clearQ').addEventListener('click', () => {
 
 /* ---------------- Overlay ---------------- */
 const focusStack = [];
+// 画面(シート)を開くたびに履歴を1つ積む。スマホの「戻る」ジェスチャーで1つ前の画面に戻れるようにする
+let ignorePop = 0;
+const overlayStack = []; // 開いた順(最後がいちばん上)
+
 function openOverlay(ov, origin) {
+  if (ov.getAttribute('aria-hidden') === 'false') return;
   focusStack.push(document.activeElement);
+  overlayStack.push(ov);
+  if (!ov.classList.contains('gate')) {
+    history.pushState({ ov: ov.id, tab: state.tab }, '');
+    ov._hist = true;
+  }
   const sheet = ov.querySelector('.sheet');
   if (origin) {
     // タップした場所からシートが広がるように
@@ -831,11 +843,27 @@ function openOverlay(ov, origin) {
   ov.scrollTop = 0;
   ov.setAttribute('aria-hidden', 'false');
   document.body.classList.add('locked');
-  ov._raf = requestAnimationFrame(() => ov.classList.add('open'));
+  // 閉じた状態を一度描いてから開くと、最初のコマが飛ばずに滑らかに出てくる
+  ov._raf = requestAnimationFrame(() => {
+    ov._raf = requestAnimationFrame(() => ov.classList.add('open'));
+  });
 }
 
+// ボタンで閉じるとき。積んだ履歴も1つ戻して、「戻る」と食い違わないようにする
 function closeOverlay(ov) {
   if (ov.getAttribute('aria-hidden') === 'true') return;
+  if (ov._hist && history.state && history.state.ov === ov.id) {
+    ignorePop++;
+    history.back();
+  }
+  closeOverlayNow(ov);
+}
+
+function closeOverlayNow(ov) {
+  if (ov.getAttribute('aria-hidden') === 'true') return;
+  ov._hist = false;
+  const at = overlayStack.lastIndexOf(ov);
+  if (at >= 0) overlayStack.splice(at, 1);
   cancelAnimationFrame(ov._raf);
   ov.classList.remove('open');
   ov.setAttribute('aria-hidden', 'true');
@@ -851,9 +879,18 @@ document.querySelectorAll('.overlay').forEach((ov) => {
     if (e.target === ov || e.target.closest('[data-close]')) closeOverlay(ov);
   });
 });
+// スマホの「戻る」:いちばん上の画面を閉じる。画面が開いていなければタブを1つ前に戻す(plan.js)
+window.addEventListener('popstate', (e) => {
+  if (ignorePop > 0) { ignorePop--; return; }
+  const top = overlayStack.filter((o) => o._hist).pop();
+  if (top) { closeOverlayNow(top); return; }
+  closeMenu(true);
+  onHistoryTab((e.state && e.state.tab) || 'recipes');
+});
+
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  const open = [...document.querySelectorAll('.overlay[aria-hidden="false"]')].pop();
+  const open = overlayStack[overlayStack.length - 1];
   if (open && !open.classList.contains('gate')) closeOverlay(open);
 });
 
@@ -934,11 +971,8 @@ function renderActions(r) {
   const box = $('#dActions');
   box.innerHTML = '';
   const v = videoInfo(r.videoUrl);
-  if (v && v.type === 'youtube') {
-    const b = iconBtn('btn', 'play', '動画で見る');
-    b.onclick = () => openPip(r, v.start, b);
-    box.append(b);
-  } else if (v) {
+  // YouTube は写真の「再生」から見られるので、ボタンは YouTube 以外(アプリで開くもの)だけ
+  if (v && v.type !== 'youtube') {
     const a = el('a', 'btn');
     a.href = v.url;
     a.target = '_blank';
@@ -1082,6 +1116,7 @@ function renderLog(r) {
 function openDetail(id, origin) {
   const r = getRecipe(id);
   if (!r) return;
+  if ($('#detailOv').getAttribute('aria-hidden') === 'false' && state.detailId === id) return;
   state.detailId = id;
   state.servings = r.servings;
   renderHero(r);
@@ -1098,7 +1133,12 @@ function openDetail(id, origin) {
   closeLogForm(true);
   renderLog(r);
   resetDelete();
-  openOverlay($('#detailOv'), origin);
+  // 大きな写真の展開が動きの途中に入るとカクつくので、先に済ませる(長くても 0.16 秒まで)
+  const img = $('#dHero img');
+  const ready = img && img.decode
+    ? Promise.race([img.decode().catch(() => {}), new Promise((res) => setTimeout(res, 160))])
+    : Promise.resolve();
+  ready.then(() => { if (state.detailId === id) openOverlay($('#detailOv'), origin); });
 }
 
 $('#dFav').addEventListener('click', () => {
@@ -1188,12 +1228,25 @@ function openLogForm() {
   logPhoto = null;
   $('#logPhotoBtn').classList.remove('has');
   $('#logPhotoLabel').textContent = '📷 写真';
-  logForm.classList.add('open');
+  slideBelow(() => logForm.classList.add('open'));
   setTimeout(() => $('#logNote').focus({ preventScroll: true }), 300);
 }
 function closeLogForm(instant) {
-  logForm.classList.remove('open');
-  if (instant) logForm.style.transition = 'none', void logForm.offsetWidth, logForm.style.transition = '';
+  if (!logForm.classList.contains('open')) return;
+  if (instant) { logForm.classList.remove('open'); return; }
+  logForm.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'ease-out' })
+    .onfinish = () => slideBelow(() => logForm.classList.remove('open'));
+}
+
+// 記録フォームの開け閉めで、その下(記録の一覧・編集ボタン)を高さのアニメーションではなく移動で滑らかに動かす
+function slideBelow(change) {
+  const below = [$('#logList'), $('.manage')];
+  const before = below.map((e) => e.getBoundingClientRect().top);
+  change();
+  below.forEach((e, i) => {
+    const dy = before[i] - e.getBoundingClientRect().top;
+    if (dy) e.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 420, easing: 'cubic-bezier(.32,.72,0,1)' });
+  });
 }
 $('#cookedBtn').addEventListener('click', () => {
   if (logForm.classList.contains('open')) closeLogForm(); else openLogForm();
@@ -1462,7 +1515,8 @@ function openPip(r, t = 0, origin) {
   f.title = r.name;
   f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
   f.allowFullscreen = true;
-  f.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&enablejsapi=1`
+  // youtube-nocookie はログイン情報を使わない(=ゲスト扱いで広告が出る)ので、通常の youtube.com で埋め込む
+  f.src = `https://www.youtube.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&enablejsapi=1`
     + `&origin=${encodeURIComponent(location.origin)}&start=${Math.floor(t)}`;
   f.addEventListener('load', () => {
     f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
@@ -1508,9 +1562,15 @@ function closePip() {
 }
 
 function setPipBig(big) {
+  const before = pip.inner.getBoundingClientRect();
   pip.big = big;
   hideCtrls();
-  pipRestore(true);
+  pipRestore(false);
+  const after = pip.inner.getBoundingClientRect();
+  pip.inner.animate([
+    { transformOrigin: '0 0', transform: `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${before.width / after.width}, ${before.height / after.height})` },
+    { transformOrigin: '0 0', transform: 'none' },
+  ], { duration: 420, easing: 'cubic-bezier(.32,.72,0,1)' });
 }
 
 pip.inner.addEventListener('click', (e) => {
@@ -2013,11 +2073,15 @@ function settingsChanged() {
   renderCatEditors();
   renderChips();
   if ($('#formOv').getAttribute('aria-hidden') === 'false') { renderGenrePicks(); renderCoursePicks(); }
+  if ($('#fridgeOv').getAttribute('aria-hidden') === 'false') renderFridge();
 }
+
+// よく使う食材は「自動」のときもあるので、編集用の一覧はここから取る
+const settingsList = (kind) => (kind === 'staples' ? effectiveStaples() : state.settings[kind]);
 
 function renderCatEditor(ul, kind, noun) {
   ul.innerHTML = '';
-  const list = state.settings[kind];
+  const list = settingsList(kind);
   if (!list.length) ul.append(el('li', 'empty-note', `${noun}はまだありません`));
   list.forEach((name) => {
     const li = el('li');
@@ -2027,7 +2091,7 @@ function renderCatEditor(ul, kind, noun) {
     del.innerHTML = ICON.close;
     del.setAttribute('aria-label', `「${name}」を選択肢から外す`);
     del.onclick = () => {
-      state.settings[kind] = state.settings[kind].filter((x) => x !== name);
+      state.settings[kind] = settingsList(kind).filter((x) => x !== name);
       saveSettings();
       toast(`「${name}」を選択肢から外しました`);
     };
@@ -2039,7 +2103,19 @@ function renderCatEditor(ul, kind, noun) {
 function renderCatEditors() {
   renderCatEditor($('#genreEdit'), 'genres', 'ジャンル');
   renderCatEditor($('#courseEdit'), 'courses', '種類');
+  renderCatEditor($('#stapleEdit'), 'staples', 'よく使う食材');
+  const auto = !Array.isArray(state.settings.staples);
+  $('#stapleAuto').hidden = auto;
+  $('#stapleHint').textContent = auto
+    ? 'いまは、登録したレシピによく出てくる食材を自動で表示しています。追加・削除すると、この内容で固定されます。'
+    : '「冷蔵庫の食材から探す」で、ワンタップで入れられる食材です。';
 }
+
+$('#stapleAuto').addEventListener('click', () => {
+  state.settings.staples = null;
+  saveSettings();
+  toast('レシピから自動で選ぶようにしました');
+});
 
 document.querySelectorAll('.add-row').forEach((f) => f.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -2047,12 +2123,15 @@ document.querySelectorAll('.add-row').forEach((f) => f.addEventListener('submit'
   const kind = f.dataset.kind;
   const name = input.value.trim().replace(/\s+/g, ' ');
   if (!name) return input.focus();
-  if (state.settings[kind].includes(name)) {
+  const list = settingsList(kind);
+  // 食材は「たまご/卵」なども同じものとして重複を防ぐ
+  const same = kind === 'staples' ? (x) => ingKey(x) === ingKey(name) : (x) => x === name;
+  if (list.some(same)) {
     toast(`「${name}」はすでにあります`);
     return input.select();
   }
-  if (state.settings[kind].length >= 30) return toast('これ以上は追加できません(30個まで)');
-  state.settings[kind] = [...state.settings[kind], name];
+  if (list.length >= 30) return toast('これ以上は追加できません(30個まで)');
+  state.settings[kind] = [...list, name];
   input.value = '';
   saveSettings();
 }));
