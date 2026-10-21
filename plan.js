@@ -376,7 +376,10 @@ $('#entryRemove').addEventListener('click', async () => {
   if (!e) return;
   await writeDocs('plan', [{ type: 'del', id: e.id }]);
   renderPlan();
-  toast('献立から外しました');
+  // 買い物リストを作ったあとに献立を変えたときは、作り直せることを伝える
+  toast(state.shop.some((x) => x.source === 'plan' && !x.checked)
+    ? '献立から外しました。買い物リストは「買い物リストを更新」で作り直せます'
+    : '献立から外しました');
 });
 
 $('#entryOpen').addEventListener('click', () => {
@@ -631,9 +634,24 @@ function renderShop(animate) {
   renderShopCount();
 }
 
+const TRASH = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9.5 3.5h5M6 7l.9 12.6A1.5 1.5 0 0 0 8.4 21h7.2a1.5 1.5 0 0 0 1.5-1.4L18 7M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function shopRow(s, i) {
   const li = el('li', 'shop-item' + (s.checked ? ' done' : ''));
   li.style.setProperty('--i', Math.min(i, 12));
+
+  // 左にスワイプすると出てくる削除ボタン(Apple のメールと同じ)
+  const actions = el('div', 'si-actions');
+  const trash = el('button', 'si-trash');
+  trash.type = 'button';
+  trash.innerHTML = TRASH;
+  trash.append(el('span', null, '削除'));
+  trash.setAttribute('aria-label', `「${s.name}」を削除`);
+  trash.tabIndex = -1;
+  trash.onclick = () => removeShopItem(s, li);
+  actions.append(trash);
+
+  const front = el('div', 'si-front');
   const btn = el('button', 'si-main');
   btn.type = 'button';
   btn.setAttribute('role', 'checkbox');
@@ -646,25 +664,119 @@ function shopRow(s, i) {
   btn.append(check, text);
   if (s.amount) btn.append(el('span', 'si-amt', s.amount));
   btn.onclick = () => {
+    if (li._swiped) return; // スワイプした直後の指離れはチェックにしない
+    if (li.classList.contains('open')) return closeSwipe(li);
     li.classList.add(s.checked ? 'unchecking' : 'checking');
     setTimeout(async () => {
       await writeDocs('shopping', [{ type: 'put', d: { ...s, checked: !s.checked } }]);
       renderShop();
     }, 320);
   };
-  li.append(btn);
-  if (s.source === 'manual') {
-    const del = el('button', 'si-del');
-    del.type = 'button';
-    del.innerHTML = ICON.close;
-    del.setAttribute('aria-label', `「${s.name}」をリストから消す`);
-    del.onclick = async () => {
-      await writeDocs('shopping', [{ type: 'del', id: s.id }]);
-      renderShop();
-    };
-    li.append(del);
-  }
+  front.append(btn);
+
+  // マウスのとき(Mac)は、行にカーソルを乗せるとゴミ箱が出る
+  const del = el('button', 'si-del');
+  del.type = 'button';
+  del.innerHTML = TRASH;
+  del.setAttribute('aria-label', `「${s.name}」を削除`);
+  del.onclick = () => removeShopItem(s, li);
+  front.append(del);
+
+  li.append(actions, front);
+  attachSwipe(li, front, s);
   return li;
+}
+
+/* スワイプで削除 */
+const SWIPE_OPEN = 88;
+let swipeOpen = null;
+
+function setSwipeX(li, x, animate) {
+  const front = li.querySelector('.si-front');
+  front.style.transition = animate ? '' : 'none';
+  front.style.transform = x ? `translateX(${x}px)` : '';
+  li.style.setProperty('--reveal', String(Math.min(1, Math.max(0, -x / SWIPE_OPEN))));
+}
+
+function openSwipe(li) {
+  if (swipeOpen && swipeOpen !== li) closeSwipe(swipeOpen);
+  li.classList.add('open');
+  li.querySelector('.si-trash').tabIndex = 0;
+  setSwipeX(li, -SWIPE_OPEN, true);
+  swipeOpen = li;
+}
+
+function closeSwipe(li) {
+  if (!li) return;
+  li.classList.remove('open', 'full');
+  li.querySelector('.si-trash').tabIndex = -1;
+  setSwipeX(li, 0, true);
+  if (swipeOpen === li) swipeOpen = null;
+}
+
+function attachSwipe(li, front, s) {
+  front.addEventListener('pointerdown', (e) => {
+    if (e.button > 0 || e.target.closest('.si-del')) return;
+    const sx = e.clientX, sy = e.clientY;
+    const base = li.classList.contains('open') ? -SWIPE_OPEN : 0;
+    const width = li.offsetWidth;
+    let mode = null; // 'h' = 横スワイプ、'v' = 縦スクロール
+    let x = base;
+
+    const move = (ev) => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!mode) {
+        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          mode = 'h';
+          front.setPointerCapture(ev.pointerId);
+          if (swipeOpen && swipeOpen !== li) closeSwipe(swipeOpen);
+        } else if (Math.abs(dy) > 8) {
+          mode = 'v';
+          return stop();
+        } else return;
+      }
+      x = base + dx;
+      if (x > 0) x *= 0.2; // 右へはほとんど動かない
+      setSwipeX(li, x, false);
+      // 大きく引っぱったら「離すと削除」の見た目にする
+      li.classList.toggle('full', x < -width * 0.55);
+    };
+    const up = () => {
+      stop();
+      if (mode !== 'h') return;
+      li._swiped = true;
+      setTimeout(() => { li._swiped = false; }, 0);
+      if (x < -width * 0.55) removeShopItem(s, li);
+      else if (x < -40) openSwipe(li);
+      else closeSwipe(li);
+    };
+    const stop = () => {
+      front.removeEventListener('pointermove', move);
+      front.removeEventListener('pointerup', up);
+      front.removeEventListener('pointercancel', up);
+    };
+    front.addEventListener('pointermove', move);
+    front.addEventListener('pointerup', up);
+    front.addEventListener('pointercancel', up);
+  });
+}
+
+// ほかの場所を触ったら、開いているゴミ箱を閉じる
+document.addEventListener('pointerdown', (e) => {
+  if (swipeOpen && !swipeOpen.contains(e.target)) closeSwipe(swipeOpen);
+});
+
+function removeShopItem(s, li) {
+  if (swipeOpen === li) swipeOpen = null;
+  li.style.height = li.offsetHeight + 'px';
+  li.classList.add('removing');
+  setSwipeX(li, -li.offsetWidth, true);
+  requestAnimationFrame(() => requestAnimationFrame(() => { li.style.height = '0px'; }));
+  setTimeout(async () => {
+    await writeDocs('shopping', [{ type: 'del', id: s.id }]);
+    renderShop();
+    toast(`「${s.name}」を削除しました`);
+  }, 320);
 }
 
 $('#shopAdd').addEventListener('submit', async (e) => {

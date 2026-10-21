@@ -937,8 +937,23 @@ body:not([data-tab="recipes"]) .fab { opacity: 0; transform: scale(.4) rotate(-3
 .shop-h span { font-weight: 500; letter-spacing: 0; }
 .shop-ul { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
 #shopList.animate .shop-item { animation: rise .45s var(--ease) both; animation-delay: calc(var(--i) * 30ms); }
-.shop-item { display: flex; align-items: center; border-top: 1px solid var(--line); transition: opacity .3s, transform .3s var(--ease); }
+.shop-item { position: relative; overflow: hidden; border-top: 1px solid var(--line); transition: opacity .3s, height .3s var(--ease); }
 .shop-item:first-child { border-top: 0; }
+/* 前面(スワイプで動く部分)と、その後ろの削除ボタン */
+.si-front {
+  position: relative; z-index: 1; display: flex; align-items: center; background: var(--surface);
+  touch-action: pan-y; transition: transform .35s var(--ease), opacity .3s;
+}
+.si-actions { position: absolute; inset: 0; display: flex; justify-content: flex-end; background: var(--danger); }
+.si-trash {
+  width: 88px; height: 100%; border: 0; background: none; color: #fff; padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 700;
+  transform: scale(calc(.6 + var(--reveal, 0) * .4)); opacity: var(--reveal, 0);
+  transition: width .3s var(--ease), transform .2s, opacity .2s;
+}
+.si-trash svg { width: 22px; height: 22px; }
+.shop-item.full .si-trash, .shop-item.removing .si-trash { width: 100%; align-items: flex-end; padding-right: 30px; transform: none; opacity: 1; }
+.shop-item.removing { opacity: 0; }
 .si-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 13px 16px; border: 0; background: none; text-align: left; }
 .si-check {
   width: 26px; height: 26px; flex: none; border-radius: 50%; border: 2px solid var(--ink-3); display: grid; place-items: center; color: #fff;
@@ -950,15 +965,19 @@ body:not([data-tab="recipes"]) .fab { opacity: 0; transform: scale(.4) rotate(-3
 .si-name::after { content: ""; position: absolute; left: 0; top: 52%; height: 1.5px; width: 0; background: currentColor; transition: width .3s var(--ease); }
 .si-sub { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .si-amt { flex: none; max-width: 40%; font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.si-del { width: 40px; height: 40px; margin-right: 6px; flex: none; border: 0; border-radius: 50%; background: none; color: var(--ink-3); display: grid; place-items: center; transition: color .2s, background .2s; }
+.si-del { display: none; width: 36px; height: 36px; margin-right: 8px; flex: none; border: 0; border-radius: 50%; background: none; color: var(--ink-3); place-items: center; padding: 0; transition: color .2s, background .2s; }
+.si-del svg { width: 18px; height: 18px; }
 .si-del:hover { color: var(--danger); background: var(--danger-tint); }
+@media (hover: hover) and (pointer: fine) {
+  .shop-item:hover .si-del, .si-del:focus-visible { display: grid; }
+}
 .shop-item.done .si-check, .shop-item.checking .si-check { background: var(--success); border-color: var(--success); }
 .shop-item.done .si-check svg, .shop-item.checking .si-check svg { opacity: 1; transform: none; }
 .shop-item.done .si-name, .shop-item.checking .si-name { color: var(--ink-2); }
 .shop-item.done .si-name::after, .shop-item.checking .si-name::after { width: 100%; }
-.shop-item.checking { opacity: .5; transform: translateX(10px); }
+.shop-item.checking .si-front { opacity: .5; transform: translateX(10px); }
 .shop-item.unchecking .si-check { background: none; border-color: var(--ink-3); }
-.shop-item.unchecking { opacity: .5; }
+.shop-item.unchecking .si-front { opacity: .5; }
 .shop-done { margin-top: 6px; }
 .shop-done summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; margin: 0 0 8px 4px; font-size: 13px; font-weight: 700; color: var(--ink-2); }
 .shop-done summary::-webkit-details-marker { display: none; }
