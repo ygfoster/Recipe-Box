@@ -212,9 +212,14 @@
           <ul class="log-list" id="logList"></ul>
         </section>
 
-        <div class="actions">
-          <button class="btn ghost danger" id="delBtn" type="button">削除</button>
-          <button class="btn primary" id="editBtn" type="button">編集</button>
+        <div class="manage">
+          <button class="manage-btn delete" id="delBtn" type="button" aria-label="削除">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9.5 3.5h5M6 7l.9 12.6A1.5 1.5 0 0 0 8.4 21h7.2a1.5 1.5 0 0 0 1.5-1.4L18 7M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="mb-label">本当に削除する</span>
+          </button>
+          <button class="manage-btn edit" id="editBtn" type="button" aria-label="編集">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 19.5h4l10.3-10.3a2.83 2.83 0 0 0-4-4L4.5 15.5zM13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
       </div>
     </article>

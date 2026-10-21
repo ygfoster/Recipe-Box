@@ -51,7 +51,8 @@ function normalizeSettings(s) {
 state.settings = normalizeSettings(prefs.get('settings', null));
 
 const ICON = {
-  play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" fill="currentColor"/></svg>',
+  // 三角形の重心((左辺x×2 + 先端x) / 3)が中心の 12 に来る形
+  play: '<svg viewBox="0 0 24 24"><path d="M7.75 5.4v13.2a1 1 0 0 0 1.52.85l10.73-6.6a1 1 0 0 0 0-1.7L9.27 4.55a1 1 0 0 0-1.52.85z" fill="currentColor"/></svg>',
   heart: '<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.2-9.4C1.6 7.6 3.9 4.5 7.2 4.5c2 0 3.5 1.1 4.8 2.8 1.3-1.7 2.8-2.8 4.8-2.8 3.3 0 5.6 3.1 4.4 6.6-1.7 4.8-9.2 9.4-9.2 9.4z"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M12 3.2l2.7 5.5 6 .9-4.35 4.25 1 6L12 17l-5.4 2.85 1-6L3.3 9.6l6-.9z"/></svg>',
   timer: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9.5v4l2.5 1.8M10 2.5h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -852,11 +853,15 @@ function renderHero(r) {
   const img = heroImage(r);
   if (img) hero.append(img); else hero.append('🍽');
   const v = videoInfo(r.videoUrl);
-  if (v && v.type === 'youtube') {
-    const play = iconBtn('hero-play', 'play');
+  const playable = !!(v && v.type === 'youtube');
+  hero.classList.toggle('playable', playable);
+  hero.onclick = null;
+  if (playable) {
+    // 写真を隠さないよう、再生ボタンは左下に小さく。写真のどこを押しても再生できる
+    const play = iconBtn('hero-play', 'play', '再生');
     play.setAttribute('aria-label', '動画を再生');
-    play.onclick = () => openPip(r, v.start, play);
     hero.append(play);
+    hero.onclick = () => openPip(r, v.start, play);
   }
 }
 
@@ -1192,15 +1197,16 @@ logForm.addEventListener('submit', async (e) => {
 
 let delTimer;
 const delBtn = $('#delBtn');
+// ゴミ箱を押すと「本当に削除する」に広がり、もう一度押すと削除。3秒で元に戻る
 function resetDelete() {
   clearTimeout(delTimer);
   delBtn.classList.remove('confirm');
-  delBtn.textContent = '削除';
+  delBtn.setAttribute('aria-label', '削除');
 }
 delBtn.addEventListener('click', async () => {
   if (!delBtn.classList.contains('confirm')) {
     delBtn.classList.add('confirm');
-    delBtn.textContent = '本当に削除する';
+    delBtn.setAttribute('aria-label', '本当に削除する');
     delTimer = setTimeout(resetDelete, 3000);
     return;
   }
@@ -1325,7 +1331,7 @@ const pip = {
 const PIP_BAR = 40;
 const PIP_M = 10;
 const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>';
-const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>';
+const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8.5 5.5v13L19 12z" fill="currentColor"/></svg>';
 
 function pipDims() {
   const vw = window.innerWidth;
