@@ -1,8 +1,8 @@
 // オフラインでも開けるように、アプリ本体をキャッシュする
-const CACHE = 'rb-v6';
+const CACHE = 'rb-v7';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './cloud.js', './firebase-config.js',
-  './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/icon.svg',
+  './plan.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/icon.svg',
 ];
 
 self.addEventListener('install', (e) => {

@@ -58,6 +58,7 @@ const ICON = {
   timer: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9.5v4l2.5 1.8M10 2.5h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   link: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4.5A1.5 1.5 0 0116.5 20h-11A1.5 1.5 0 014 18.5v-11A1.5 1.5 0 015.5 6H10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   chef: '<svg viewBox="0 0 24 24"><path d="M7 14.5a4 4 0 01-.9-7.9A5 5 0 0112 3a5 5 0 015.9 3.6 4 4 0 01-.9 7.9V20H7z M7 17h10" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   close: '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
   pause: '<svg viewBox="0 0 24 24" width="14" height="14"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
@@ -65,27 +66,46 @@ const ICON = {
 };
 
 /* ---------------- IndexedDB ---------------- */
+// recipes(レシピ)・plan(献立)・shopping(買い物リスト)
+const STORES = ['recipes', 'plan', 'shopping'];
 const db = (() => {
   let conn;
   const open = () => conn || (conn = new Promise((res, rej) => {
-    const req = indexedDB.open('recipe-box', 1);
-    req.onupgradeneeded = () => req.result.createObjectStore('recipes', { keyPath: 'id' });
-    req.onsuccess = () => res(req.result);
+    const req = indexedDB.open('recipe-box', 2);
+    req.onupgradeneeded = () => {
+      STORES.forEach((s) => { if (!req.result.objectStoreNames.contains(s)) req.result.createObjectStore(s, { keyPath: 'id' }); });
+    };
+    // 古い版のアプリが別のタブで開いていると、保存場所の更新が待たされる
+    req.onblocked = () => toast('ほかのタブで開いている Recipe Box を閉じてください');
+    req.onsuccess = () => {
+      const d = req.result;
+      // 新しい版が保存場所を更新しようとしたら、こちらは身を引く
+      d.onversionchange = () => {
+        d.close();
+        conn = null;
+        toast('アプリが更新されました。開き直してください');
+      };
+      res(d);
+    };
     req.onerror = () => rej(req.error);
   }));
-  const tx = async (mode, fn) => {
+  const tx = async (store, mode, fn) => {
     const d = await open();
     return new Promise((res, rej) => {
-      const t = d.transaction('recipes', mode);
-      const out = fn(t.objectStore('recipes'));
+      const t = d.transaction(store, mode);
+      const out = fn(t.objectStore(store));
       t.oncomplete = () => res(out && out.result);
       t.onerror = () => rej(t.error);
     });
   };
   return {
-    all: () => tx('readonly', (s) => s.getAll()),
-    put: (r) => tx('readwrite', (s) => s.put(r)),
-    del: (id) => tx('readwrite', (s) => s.delete(id)),
+    all: (store = 'recipes') => tx(store, 'readonly', (s) => s.getAll()),
+    put: (r, store = 'recipes') => tx(store, 'readwrite', (s) => s.put(r)),
+    del: (id, store = 'recipes') => tx(store, 'readwrite', (s) => s.delete(id)),
+    // まとめて書く(献立から買い物リストを作るときなど)
+    batch: (store, ops) => tx(store, 'readwrite', (s) => {
+      ops.forEach((op) => (op.type === 'del' ? s.delete(op.id) : s.put(op.d)));
+    }),
   };
 })();
 
@@ -103,6 +123,13 @@ const repo = {
   async del(id) {
     if (this.mode !== 'cloud') return db.del(id);
     this.cloud.del(id);
+    evalSync(true);
+  },
+  // 献立・買い物リスト用。ops = [{ type: 'put', d } | { type: 'del', id }]
+  async batch(store, ops) {
+    if (!ops.length) return;
+    if (this.mode !== 'cloud') return db.batch(store, ops);
+    this.cloud.batch(store, ops);
     evalSync(true);
   },
 };
@@ -576,6 +603,7 @@ function renderChipRow(box, key, values, withAll) {
 function renderChips() {
   renderChipRow($('#genreChips'), 'genre', allGenres(), true);
   renderChipRow($('#courseChips'), 'course', allCourses(), false);
+  recipesChanged(); // 献立・買い物の画面にもレシピ名などの変更を反映(plan.js)
 }
 
 /* ---------------- 独自のプルダウン ---------------- */
@@ -919,6 +947,9 @@ function renderActions(r) {
     a.append(`${v.label}で開く`);
     box.append(a);
   }
+  const plan = iconBtn('btn', 'calendar', '献立に追加');
+  plan.onclick = () => openSlotPicker(r.id, plan);
+  box.append(plan);
   const cook = iconBtn('btn primary', 'chef', '調理モード');
   cook.onclick = () => openCook(r.id);
   box.append(cook);
@@ -2086,6 +2117,7 @@ function clearRecipes() {
   cardNodes.clear();
   state.recipes = [];
   state.loaded = false;
+  resetPlanData();
   renderChips();
   renderGrid();
 }
@@ -2193,6 +2225,13 @@ async function migrateLocal(user) {
   let local = [];
   try { local = (await db.all()).map(normalizeRecipe); } catch { /* 端末側に保存がない */ }
   prefs.set(key, true);
+  // 献立・買い物リストも一緒に移す
+  for (const store of ['plan', 'shopping']) {
+    try {
+      const docs = await db.all(store);
+      if (docs.length) await repo.batch(store, docs.map((d) => ({ type: 'put', d })));
+    } catch { /* 端末側に保存がない */ }
+  }
   if (!local.length) return;
   let ok = 0;
   for (const r of local) {
@@ -2218,6 +2257,7 @@ async function loadLocal() {
   renderChips();
   renderGrid();
   setSync('local');
+  await loadPlanLocal();
   handlePendingShare();
 }
 
@@ -2274,7 +2314,8 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 
 /* ---------------- Init ---------------- */
-(function init() {
+// plan.js も読み込まれてから始める
+document.addEventListener('DOMContentLoaded', function init() {
   syncTools();
   renderAccount();
   onScroll();
@@ -2295,4 +2336,4 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     $('#gateError').hidden = false;
     openOverlay($('#gateOv'));
   }, 10000);
-})();
+});

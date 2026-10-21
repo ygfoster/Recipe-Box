@@ -25,6 +25,8 @@
   </header>
 
   <main class="wrap">
+    <!-- レシピ -->
+    <div class="view" id="viewRecipes">
     <section class="hero">
       <h1>レシピボックス</h1>
       <p class="sub">お気に入りの味を、ひとつの場所に。</p>
@@ -68,8 +70,79 @@
       <p id="emptyText"></p>
       <button class="btn primary" id="emptyAdd" type="button">レシピを追加</button>
     </section>
+    </div>
 
+    <!-- 献立:期間内の日付ごとに 朝・昼・晩 -->
+    <div class="view" id="viewPlan" hidden>
+      <section class="view-head">
+        <h1>献立</h1>
+        <p class="sub">作るものを決めて、そのまま買い物リストへ。</p>
+      </section>
+
+      <div class="plan-bar">
+        <div class="segmented" id="planPeriod" role="group" aria-label="期間">
+          <button type="button" data-days="3">3日</button>
+          <button type="button" data-days="7">1週間</button>
+          <button type="button" data-days="14">2週間</button>
+        </div>
+      </div>
+
+      <section class="plan-summary" aria-live="polite">
+        <div class="ps-text">
+          <b id="planCount"></b>
+          <span id="planRange"></span>
+        </div>
+        <button class="btn primary" id="makeList" type="button">買い物リストを作る</button>
+      </section>
+
+      <div class="plan-days" id="planDays"></div>
+    </div>
+
+    <!-- 買い物リスト -->
+    <div class="view" id="viewShop" hidden>
+      <section class="view-head">
+        <h1>買い物リスト</h1>
+        <p class="sub" id="shopSub"></p>
+      </section>
+
+      <div class="shop-tools">
+        <form class="add-row" id="shopAdd" novalidate>
+          <input maxlength="40" autocomplete="off" enterkeyhint="done" placeholder="買うものを追加(例:牛乳 1本)" aria-label="買うものを追加">
+          <button class="btn small" type="submit">追加</button>
+        </form>
+        <button class="round-btn" id="shopShare" type="button" aria-label="買い物リストを共有">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.5v11M8 7.5l4-4 4 4M7 11H6a1.5 1.5 0 00-1.5 1.5v6A1.5 1.5 0 006 20h12a1.5 1.5 0 001.5-1.5v-6A1.5 1.5 0 0018 11h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <div id="shopList"></div>
+
+      <section class="empty" id="shopEmpty" hidden>
+        <div class="empty-icon">🛒</div>
+        <h2>買い物リストは空です</h2>
+        <p>献立から作るか、上の欄から追加してください。</p>
+        <button class="btn primary" type="button" data-goto="plan">献立を開く</button>
+      </section>
+    </div>
   </main>
+
+  <!-- 画面の切り替え(親指の届く下側) -->
+  <nav class="tabbar" id="tabbar" role="tablist" aria-label="画面の切り替え">
+    <span class="tab-ind" aria-hidden="true"></span>
+    <button class="tab" type="button" role="tab" data-tab="recipes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 016.5 3H18a1 1 0 011 1v15a1 1 0 01-1 1H6.5A1.5 1.5 0 015 18.5zM5 17.5A1.5 1.5 0 016.5 16H19M9 7.5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>レシピ</span>
+    </button>
+    <button class="tab" type="button" role="tab" data-tab="plan">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>献立</span>
+    </button>
+    <button class="tab" type="button" role="tab" data-tab="shop">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2.2l2.3 11h10.3l2-8H6.3M9 19.5a1 1 0 100 .01M17 19.5a1 1 0 100 .01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>買い物</span>
+      <b class="tab-count" id="shopCount" hidden></b>
+    </button>
+  </nav>
 
   <!-- 初回:ログイン -->
   <div class="overlay gate" id="gateOv" aria-hidden="true">
@@ -80,6 +153,88 @@
       <button class="btn primary wide" id="gateSignIn" type="button">Google でログイン</button>
       <p class="gate-error" id="gateError" hidden></p>
       <button class="link" id="gateLocal" type="button">ログインせずに使う(この端末だけに保存)</button>
+    </section>
+  </div>
+
+  <!-- 献立:レシピを選ぶ -->
+  <div class="overlay" id="pickOv" aria-hidden="true">
+    <section class="sheet picker" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+      <header class="sheet-head">
+        <div class="head-text"><p class="eyebrow" id="pickSub"></p><h2 id="pickTitle"></h2></div>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="pick-tools">
+        <div class="pick-search">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input id="pickQ" type="search" placeholder="料理名・材料で探す" autocomplete="off" aria-label="レシピを探す">
+        </div>
+        <div class="pick-chips" id="pickChips"></div>
+      </div>
+      <ul class="pick-list" id="pickList"></ul>
+      <p class="pick-empty" id="pickEmpty" hidden></p>
+      <div class="pick-foot"><button class="btn primary wide" type="button" data-close>完了</button></div>
+    </section>
+  </div>
+
+  <!-- 献立の1品 -->
+  <div class="overlay" id="entryOv" aria-hidden="true">
+    <section class="sheet entry" role="dialog" aria-modal="true" aria-labelledby="entryTitle">
+      <header class="sheet-head">
+        <div class="entry-head">
+          <span class="entry-thumb" id="entryThumb"></span>
+          <div class="head-text"><p class="eyebrow" id="entrySub"></p><h2 id="entryTitle"></h2></div>
+        </div>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="entry-body">
+        <div class="field-line" id="entryServRow">
+          <span>人数</span>
+          <div class="stepper" id="entryServ">
+            <button type="button" data-d="-1" aria-label="減らす">−</button>
+            <span id="entryServVal"></span>
+            <button type="button" data-d="1" aria-label="増やす">＋</button>
+          </div>
+        </div>
+        <div class="entry-actions">
+          <button class="btn ghost danger" id="entryRemove" type="button">献立から外す</button>
+          <button class="btn primary" id="entryOpen" type="button">レシピを見る</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- レシピ画面から献立に追加 -->
+  <div class="overlay" id="slotOv" aria-hidden="true">
+    <section class="sheet slot" role="dialog" aria-modal="true" aria-labelledby="slotTitle">
+      <header class="sheet-head">
+        <div class="head-text"><p class="eyebrow">献立に追加</p><h2 id="slotTitle"></h2></div>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="slot-body">
+        <h3 class="set-h">いつ</h3>
+        <div class="slot-days" id="slotDays"></div>
+        <div class="segmented wide" id="slotMeals" role="group" aria-label="朝・昼・晩">
+          <button type="button" data-meal="breakfast">朝</button>
+          <button type="button" data-meal="lunch">昼</button>
+          <button type="button" data-meal="dinner">晩</button>
+        </div>
+        <p class="slot-note" id="slotNote"></p>
+        <div class="field-line">
+          <span>人数</span>
+          <div class="stepper" id="slotServ">
+            <button type="button" data-d="-1" aria-label="減らす">−</button>
+            <span id="slotServVal"></span>
+            <button type="button" data-d="1" aria-label="増やす">＋</button>
+          </div>
+        </div>
+        <button class="btn primary wide" id="slotAdd" type="button">追加</button>
+      </div>
     </section>
   </div>
 
@@ -383,5 +538,6 @@
 
   <script src="firebase-config.js"></script>
   <script src="app.js"></script>
+  <script src="plan.js"></script>
 </body>
 </html>
