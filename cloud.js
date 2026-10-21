@@ -19,7 +19,9 @@ if (cfg && RB) {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
   const recipeDoc = (id) => doc(fs, 'users', auth.currentUser.uid, 'recipes', id);
+  const settingsDoc = (uid) => doc(fs, 'users', uid, 'meta', 'settings');
   let unsub = null;
+  let unsubSettings = null;
 
   RB.attachCloud({
     async signIn() {
@@ -43,12 +45,21 @@ if (cfg && RB) {
     del(id) {
       deleteDoc(recipeDoc(id)).catch((e) => RB.onSyncError(e));
     },
+    putSettings(data) {
+      if (auth.currentUser) setDoc(settingsDoc(auth.currentUser.uid), data).catch((e) => RB.onSyncError(e));
+    },
   });
 
   onAuthStateChanged(auth, (user) => {
     if (unsub) { unsub(); unsub = null; }
+    if (unsubSettings) { unsubSettings(); unsubSettings = null; }
     RB.onAuth(user ? { uid: user.uid, name: user.displayName || '', email: user.email || '', photo: user.photoURL || '' } : null);
     if (!user) return;
+    unsubSettings = onSnapshot(
+      settingsDoc(user.uid),
+      (snap) => { if (!snap.metadata.fromCache || snap.exists()) RB.onSettings(snap.exists() ? snap.data() : null); },
+      (err) => RB.onSyncError(err)
+    );
     unsub = onSnapshot(
       collection(fs, 'users', user.uid, 'recipes'),
       { includeMetadataChanges: true },

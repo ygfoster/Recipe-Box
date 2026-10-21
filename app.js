@@ -4,8 +4,12 @@
    Recipe Box — データはこのブラウザの IndexedDB に保存
    ========================================================= */
 
-const GENRES = ['和食', '洋食', '中華', '韓国', 'エスニック', 'その他'];
-const COURSES = ['主菜', '副菜', '汁物', '主食', 'デザート', 'おつまみ'];
+const DEFAULT_SETTINGS = {
+  genres: ['和食', '洋食', '中華'],
+  courses: ['メイン', 'サイド', 'スープ', 'ライス', 'ヌードル', 'デザート'],
+};
+// 以前の種類名を新しい呼び方に置き換える
+const COURSE_MAP = { 主菜: 'メイン', 副菜: 'サイド', 汁物: 'スープ', 主食: 'ライス' };
 const $ = (s) => document.querySelector(s);
 
 // 並び順・絞り込みなど、この端末だけの表示設定
@@ -31,8 +35,20 @@ const state = {
   sugIndex: -1,
   loaded: false,
   user: null,
+  settings: null,
 };
 const HAS_CLOUD = !!window.RB_FIREBASE_CONFIG;
+
+function normalizeSettings(s) {
+  const list = (v, d) => (Array.isArray(v)
+    ? [...new Set(v.map((x) => String(x).trim()).filter(Boolean))].slice(0, 30)
+    : d.slice());
+  return {
+    genres: list(s && s.genres, DEFAULT_SETTINGS.genres),
+    courses: list(s && s.courses, DEFAULT_SETTINGS.courses).map((c) => COURSE_MAP[c] || c),
+  };
+}
+state.settings = normalizeSettings(prefs.get('settings', null));
 
 const ICON = {
   play: '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 001.5.86l10.5-6.5a1 1 0 000-1.72L9.5 4.64A1 1 0 008 5.5z" fill="currentColor"/></svg>',
@@ -193,11 +209,11 @@ function normalizeRecipe(r) {
   return {
     id: s(r.id) || uid(),
     name: s(r.name).trim() || '無題のレシピ',
-    genre: s(r.genre || r.category) || 'その他',
-    course: s(r.course),
+    genre: s(r.genre || r.category).trim(),
+    course: COURSE_MAP[s(r.course)] || s(r.course).trim(),
     time: +r.time > 0 ? Math.round(+r.time) : null,
     servings: +r.servings > 0 ? Math.round(+r.servings) : 2,
-    tags: Array.isArray(r.tags) ? [...new Set(r.tags.map(s).map((t) => t.trim()).filter(Boolean))].slice(0, 20) : [],
+    tags: Array.isArray(r.tags) ? [...new Set(r.tags.map(s).map((t) => t.trim().replace(/^[#＃]+/, '')).filter(Boolean))].slice(0, 20) : [],
     photo: img(r.photo),
     videoUrl: s(r.videoUrl).trim(),
     ingredients: s(r.ingredients),
@@ -518,14 +534,16 @@ function renderEmpty(n) {
 }
 
 /* ---------------- 絞り込み(ジャンル・種類・ツールバー) ---------------- */
+// 絞り込みに出すのは、設定の選択肢 + 実際にレシピで使われているもの
 function allGenres() {
-  return [...new Set([...GENRES, ...state.recipes.map((r) => r.genre).filter(Boolean)])];
+  return [...new Set([...state.settings.genres, ...state.recipes.map((r) => r.genre).filter(Boolean)])];
 }
 function allCourses() {
-  return [...new Set([...COURSES, ...state.recipes.map((r) => r.course).filter(Boolean)])];
+  return [...new Set([...state.settings.courses, ...state.recipes.map((r) => r.course).filter(Boolean)])];
 }
 
-function renderChipRow(box, key, values) {
+// ジャンル行は「すべて」で解除。種類行はもう一度押すと解除(「すべて」を2つ並べない)
+function renderChipRow(box, key, values, withAll) {
   box.innerHTML = '';
   const counts = {};
   state.recipes.forEach((r) => { if (r[key]) counts[r[key]] = (counts[r[key]] || 0) + 1; });
@@ -533,33 +551,134 @@ function renderChipRow(box, key, values) {
   if (state[key] !== 'all' && !counts[state[key]]) state[key] = 'all';
   box.hidden = !cats.length;
 
+  const sync = () => box.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c.dataset.v === state[key]));
   const add = (val, label, n) => {
-    const b = el('button', 'chip' + (state[key] === val ? ' active' : ''), label);
+    const b = el('button', 'chip', label);
     b.type = 'button';
+    b.dataset.v = val;
+    b.title = label;
     b.append(el('span', 'n', String(n)));
     b.onclick = () => {
-      if (state[key] === val) return;
-      state[key] = val;
-      box.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === b));
+      if (state[key] === val && withAll) return;
+      state[key] = state[key] === val ? 'all' : val;
+      sync();
       b.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
       renderGrid();
     };
     box.append(b);
   };
-  add('all', 'すべて', state.recipes.filter((r) => key === 'genre' || r[key]).length);
+  if (withAll) add('all', 'すべて', state.recipes.length);
   cats.forEach((c) => add(c, c, counts[c]));
+  sync();
 }
 
 function renderChips() {
-  renderChipRow($('#genreChips'), 'genre', allGenres());
-  renderChipRow($('#courseChips'), 'course', allCourses());
+  renderChipRow($('#genreChips'), 'genre', allGenres(), true);
+  renderChipRow($('#courseChips'), 'course', allCourses(), false);
 }
+
+/* ---------------- 独自のプルダウン ---------------- */
+const TIME_OPTS = [
+  { value: 0, label: '指定なし', button: '調理時間' },
+  { value: 15, label: '15分以内' },
+  { value: 30, label: '30分以内' },
+  { value: 60, label: '60分以内' },
+];
+const SORT_OPTS = [
+  { value: 'new', label: '新しい順' },
+  { value: 'rating', label: '評価が高い順' },
+  { value: 'cooked', label: 'よく作る順' },
+  { value: 'stale', label: '最近作ってない順' },
+  { value: 'time', label: '早くできる順' },
+  { value: 'name', label: '名前順' },
+];
+const menuPop = $('#menuPop');
+let openMenuBtn = null;
+
+function showMenu(btn, opts, current, pick) {
+  closeMenu(true);
+  openMenuBtn = btn;
+  btn.setAttribute('aria-expanded', 'true');
+  menuPop.innerHTML = '';
+  opts.forEach((o) => {
+    const li = el('li', 'menu-item' + (o.value === current ? ' selected' : ''));
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(o.value === current));
+    li.tabIndex = -1;
+    const check = el('span', 'mi-check');
+    check.innerHTML = ICON.check;
+    li.append(check, o.label);
+    li.onclick = () => { closeMenu(); if (o.value !== current) pick(o.value); };
+    menuPop.append(li);
+  });
+  menuPop.hidden = false;
+  // ボタンの真下に。画面からはみ出す場合は左右・上下を調整
+  const r = btn.getBoundingClientRect();
+  const w = menuPop.offsetWidth, h = menuPop.offsetHeight;
+  const alignRight = r.right - w >= 8;
+  const left = alignRight ? r.right - w : Math.min(r.left, window.innerWidth - w - 8);
+  const below = r.bottom + 8 + h <= window.innerHeight - 8;
+  menuPop.style.left = `${Math.max(8, left)}px`;
+  menuPop.style.top = `${below ? r.bottom + 8 : Math.max(8, r.top - h - 8)}px`;
+  menuPop.style.transformOrigin = `${alignRight ? 'right' : 'left'} ${below ? 'top' : 'bottom'}`;
+  requestAnimationFrame(() => menuPop.classList.add('open'));
+  (menuPop.querySelector('.selected') || menuPop.firstChild).focus({ preventScroll: true });
+}
+
+function closeMenu(instant) {
+  if (!openMenuBtn) return;
+  openMenuBtn.setAttribute('aria-expanded', 'false');
+  const btn = openMenuBtn;
+  openMenuBtn = null;
+  menuPop.classList.remove('open');
+  if (instant) menuPop.hidden = true;
+  else setTimeout(() => { if (!openMenuBtn) menuPop.hidden = true; }, 200);
+  if (!instant && menuPop.contains(document.activeElement)) btn.focus({ preventScroll: true });
+}
+
+function setupMenu(btn, opts, get, set) {
+  const paint = () => {
+    const o = opts.find((x) => x.value === get()) || opts[0];
+    btn.querySelector('.menu-label').textContent = o.button || o.label;
+    return o;
+  };
+  btn.addEventListener('click', () => {
+    if (openMenuBtn === btn) return closeMenu();
+    showMenu(btn, opts, get(), (v) => { set(v); paint(); syncTools(); });
+  });
+  return paint;
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (openMenuBtn && !menuPop.contains(e.target) && !openMenuBtn.contains(e.target)) closeMenu();
+});
+window.addEventListener('scroll', () => closeMenu(true), { passive: true });
+window.addEventListener('resize', () => closeMenu(true));
+menuPop.addEventListener('keydown', (e) => {
+  const items = [...menuPop.children];
+  const i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (items[i]) items[i].click(); }
+  else if (e.key === 'Escape' || e.key === 'Tab') { e.stopPropagation(); closeMenu(); }
+});
+
+const paintTime = setupMenu($('#timeMenu'), TIME_OPTS, () => state.time, (v) => {
+  state.time = v;
+  prefs.set('time', v);
+  renderGrid();
+});
+const paintSort = setupMenu($('#sortMenu'), SORT_OPTS, () => state.sort, (v) => {
+  state.sort = v;
+  prefs.set('sort', v);
+  renderGrid();
+});
 
 function syncTools() {
   $('#favFilter').setAttribute('aria-pressed', String(state.fav));
-  $('#timeFilter').value = String(state.time);
-  $('#timeFilter').parentElement.classList.toggle('on', !!state.time);
-  $('#sortSel').value = state.sort;
+  paintTime();
+  paintSort();
+  $('#timeMenu').classList.toggle('on', !!state.time);
 }
 
 $('#favFilter').addEventListener('click', (e) => {
@@ -567,17 +686,6 @@ $('#favFilter').addEventListener('click', (e) => {
   prefs.set('fav', state.fav);
   syncTools();
   replay(e.currentTarget, 'pop');
-  renderGrid();
-});
-$('#timeFilter').addEventListener('change', (e) => {
-  state.time = +e.target.value;
-  prefs.set('time', state.time);
-  syncTools();
-  renderGrid();
-});
-$('#sortSel').addEventListener('change', (e) => {
-  state.sort = e.target.value;
-  prefs.set('sort', state.sort);
   renderGrid();
 });
 
@@ -985,6 +1093,50 @@ $('#servings').addEventListener('click', (e) => {
   renderIngredients(r, true);
 });
 
+/* 共有:受け取る人はアプリを持っていないので、そのまま読めるテキストで送る */
+function recipeText(r) {
+  const k = state.servings / r.servings;
+  const out = [r.name];
+  const meta = [r.genre, r.course, r.time ? `${r.time}分` : ''].filter(Boolean).join(' · ');
+  if (meta) out.push(meta);
+  const ing = ingredientRows(r, k);
+  if (ing.length) {
+    out.push('', `【材料】${state.servings}人分`);
+    ing.forEach((x) => out.push(x.header ? `■ ${x.name}` : `・${x.name}${x.scaled ? ' ' + x.scaled : ''}`));
+  }
+  const steps = lines(r.steps).map(parseStep);
+  if (steps.length) {
+    out.push('', '【作り方】');
+    steps.forEach((s, i) => out.push(`${i + 1}. ${s.text}`));
+  }
+  if (r.videoUrl) out.push('', `【動画】${r.videoUrl}`);
+  if (r.memo && r.memo.trim()) out.push('', '【メモ】', r.memo.trim());
+  return out.join('\n');
+}
+
+async function shareRecipe(r) {
+  const text = recipeText(r);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: r.name, text });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return; // 共有シートを閉じただけ
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('レシピをコピーしました。LINE などに貼り付けて送れます');
+  } catch {
+    toast('共有できませんでした');
+  }
+}
+
+$('#dShare').addEventListener('click', () => {
+  const r = getRecipe(state.detailId);
+  if (r) shareRecipe(r);
+});
+
 async function toggleFav(r) {
   r.favorite = !r.favorite;
   await saveRecipe(r);
@@ -1156,40 +1308,39 @@ function openCook(id) {
 }
 
 /* ---------------- フローティング動画プレーヤー ---------------- */
+// 小さいとき:動画のどこを持っても動かせる。離した場所にそのまま止まる(画面の外には出ない)
+// 大きいとき:YouTube の操作がそのまま使える。上のバーを持って動かす
 const pip = {
   el: $('#pip'),
   inner: $('#pipInner'),
   frame: null,
   vid: null,
   recipeId: null,
-  corner: prefs.get('pipCorner', 'br'),
   big: false,
+  playing: true,
+  pos: prefs.get('pipPos', null), // 画面に対する割合で覚える(回転・リサイズしても位置がずれない)
   x: 0,
   y: 0,
 };
-const PIP_BAR = 36;
+const PIP_BAR = 40;
+const PIP_M = 10;
+const ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg>';
+const ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>';
 
 function pipDims() {
   const vw = window.innerWidth;
-  const w = pip.big ? Math.min(vw - 24, 720) : Math.max(220, Math.min(vw * 0.62, 380));
-  return { w: Math.round(w), h: Math.round(w * 9 / 16) + PIP_BAR };
+  const w = Math.round(pip.big ? Math.min(vw - 2 * PIP_M, 720) : Math.max(200, Math.min(vw * 0.56, 360)));
+  return { w, h: Math.round(w * 9 / 16) + (pip.big ? PIP_BAR : 0) };
 }
 
-function timersHeight() {
-  const t = $('#timers');
-  return t.children.length ? t.getBoundingClientRect().height + 12 : 0;
-}
-
-function pipCornerXY(c) {
+function pipBounds() {
   const { w, h } = pipDims();
-  const M = 12;
-  const top = 64;
-  const bottom = window.innerHeight - h - M - timersHeight();
-  return {
-    x: c[1] === 'l' ? M : window.innerWidth - w - M,
-    y: c[0] === 't' ? top : Math.max(top, bottom),
-  };
+  return { minX: PIP_M, maxX: Math.max(PIP_M, window.innerWidth - w - PIP_M), minY: PIP_M, maxY: Math.max(PIP_M, window.innerHeight - h - PIP_M) };
 }
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// 画面の端より外へ引っぱったときは、ゴムのように少しだけついてくる
+const rubber = (v, lo, hi) => (v < lo ? lo - (lo - v) * 0.3 : v > hi ? hi + (v - hi) * 0.3 : v);
 
 function pipPlace(x, y, animate) {
   pip.x = x;
@@ -1199,11 +1350,23 @@ function pipPlace(x, y, animate) {
   if (!animate) { void pip.el.offsetWidth; pip.el.style.transition = ''; }
 }
 
-function pipSnap(animate = true) {
+function pipSavePos() {
+  const b = pipBounds();
+  pip.pos = {
+    rx: b.maxX > b.minX ? (pip.x - b.minX) / (b.maxX - b.minX) : 1,
+    ry: b.maxY > b.minY ? (pip.y - b.minY) / (b.maxY - b.minY) : 0,
+  };
+  prefs.set('pipPos', pip.pos);
+}
+
+// 覚えている位置(なければ右上)に置く
+function pipRestore(animate) {
   if (pip.el.hidden) return;
+  pip.el.classList.toggle('big', pip.big);
   pip.el.style.width = pipDims().w + 'px';
-  const p = pipCornerXY(pip.corner);
-  pipPlace(p.x, p.y, animate);
+  const b = pipBounds();
+  const p = pip.pos || { rx: 1, ry: 0.08 };
+  pipPlace(b.minX + clamp(p.rx, 0, 1) * (b.maxX - b.minX), b.minY + clamp(p.ry, 0, 1) * (b.maxY - b.minY), animate);
 }
 
 function pipCommand(func, args = []) {
@@ -1212,29 +1375,67 @@ function pipCommand(func, args = []) {
   }
 }
 
+function paintPlay() {
+  const b = pip.inner.querySelector('[data-pip="toggle"]');
+  b.innerHTML = pip.playing ? ICON_PAUSE : ICON_PLAY;
+  b.setAttribute('aria-label', pip.playing ? '一時停止' : '再生');
+}
+
+let ctrlTimer;
+function showCtrls(ms = 2600) {
+  pip.el.classList.add('ctrls');
+  clearTimeout(ctrlTimer);
+  ctrlTimer = setTimeout(() => pip.el.classList.remove('ctrls'), ms);
+}
+function hideCtrls() {
+  clearTimeout(ctrlTimer);
+  pip.el.classList.remove('ctrls');
+}
+
+// YouTube から再生状態を受け取る(1=再生中, 3=読み込み中)
+window.addEventListener('message', (e) => {
+  if (!pip.frame || e.source !== pip.frame.contentWindow) return;
+  let d;
+  try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+  if (!d) return;
+  const st = d.event === 'onStateChange' ? d.info : d.info && d.info.playerState;
+  if (typeof st === 'number' && st !== -1) {
+    pip.playing = st === 1 || st === 3;
+    paintPlay();
+  }
+});
+
 function openPip(r, t = 0, origin) {
   const v = videoInfo(r.videoUrl);
   if (!v || v.type !== 'youtube') return;
   if (pip.vid === v.id && !pip.el.hidden) {
     pipCommand('seekTo', [t, true]);
     pipCommand('playVideo');
+    pip.playing = true;
+    paintPlay();
     replay(pip.el, 'flash');
     return;
   }
   pip.vid = v.id;
   pip.recipeId = r.id;
+  pip.playing = true;
+  paintPlay();
   $('#pipTitle').textContent = r.name;
   const f = document.createElement('iframe');
   f.title = r.name;
   f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
   f.allowFullscreen = true;
-  f.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&enablejsapi=1&start=${Math.floor(t)}`;
-  $('#pipVideo').replaceChildren(f);
+  f.src = `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1&rel=0&enablejsapi=1`
+    + `&origin=${encodeURIComponent(location.origin)}&start=${Math.floor(t)}`;
+  f.addEventListener('load', () => {
+    f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+  });
+  $('#pipFrame').replaceChildren(f);
   pip.frame = f;
 
   const wasHidden = pip.el.hidden;
   pip.el.hidden = false;
-  pipSnap(false);
+  pipRestore(false);
   if (wasHidden) {
     // 押したボタンの位置から小窓が飛び出すように
     const { w, h } = pipDims();
@@ -1249,72 +1450,102 @@ function openPip(r, t = 0, origin) {
       [{ transform: from, opacity: 0, borderRadius: '40px' }, { transform: 'none', opacity: 1, borderRadius: '16px' }],
       { duration: 600, easing: 'cubic-bezier(.2,1.1,.3,1)' }
     );
+    // 最初だけ操作ボタンを見せて、触れることを伝える
+    if (!pip.big) setTimeout(() => showCtrls(1800), 450);
   }
 }
 
 function closePip() {
   if (pip.el.hidden) return;
+  hideCtrls();
   pip.inner.animate(
     [{ transform: 'none', opacity: 1 }, { transform: 'scale(.6)', opacity: 0 }],
     { duration: 240, easing: 'cubic-bezier(.4,0,1,1)' }
   ).onfinish = () => {
     pip.el.hidden = true;
-    $('#pipVideo').replaceChildren();
+    $('#pipFrame').replaceChildren();
     pip.frame = null;
     pip.vid = null;
     pip.recipeId = null;
   };
 }
 
-$('#pipClose').addEventListener('click', closePip);
-$('#pipSize').addEventListener('click', () => {
-  pip.big = !pip.big;
-  pipSnap(true);
+function setPipBig(big) {
+  pip.big = big;
+  hideCtrls();
+  pipRestore(true);
+}
+
+pip.inner.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pip]');
+  if (!b) return;
+  const act = b.dataset.pip;
+  if (act === 'close') closePip();
+  else if (act === 'big') setPipBig(true);
+  else if (act === 'small') setPipBig(false);
+  else if (act === 'toggle') {
+    pip.playing = !pip.playing;
+    pipCommand(pip.playing ? 'playVideo' : 'pauseVideo');
+    paintPlay();
+    showCtrls();
+  }
 });
 
-// ドラッグで好きな位置へ。離すと勢いの方向にある角へ吸い付く
-$('#pipBar').addEventListener('pointerdown', (e) => {
-  if (e.target.closest('button') || e.button > 0) return;
+// 指(またはマウス)で動かす。ほとんど動かさずに離したら「タップ」として操作ボタンを出す
+pip.inner.addEventListener('pointerdown', (e) => {
+  if (e.button > 0 || e.target.closest('button')) return;
+  if (!e.target.closest('.pip-shield, .pip-bar')) return;
   e.preventDefault();
-  const bar = e.currentTarget;
-  bar.setPointerCapture(e.pointerId);
+  const target = e.target.closest('.pip-shield, .pip-bar');
+  target.setPointerCapture(e.pointerId);
   const sx = e.clientX, sy = e.clientY, ox = pip.x, oy = pip.y;
   const trail = [{ x: sx, y: sy, t: performance.now() }];
-  pip.el.classList.add('dragging');
-  pip.el.style.transition = 'none';
+  const b = pipBounds();
+  let dragging = false;
 
   const move = (ev) => {
-    pip.x = ox + ev.clientX - sx;
-    pip.y = oy + ev.clientY - sy;
+    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if (!dragging) {
+      if (Math.hypot(dx, dy) < 6) return;
+      dragging = true;
+      hideCtrls();
+      pip.el.classList.add('dragging');
+      pip.el.style.transition = 'none';
+    }
+    pip.x = rubber(ox + dx, b.minX, b.maxX);
+    pip.y = rubber(oy + dy, b.minY, b.maxY);
     pip.el.style.transform = `translate3d(${pip.x}px, ${pip.y}px, 0)`;
     trail.push({ x: ev.clientX, y: ev.clientY, t: performance.now() });
     if (trail.length > 6) trail.shift();
   };
   const up = () => {
-    bar.removeEventListener('pointermove', move);
-    bar.removeEventListener('pointerup', up);
-    bar.removeEventListener('pointercancel', up);
+    target.removeEventListener('pointermove', move);
+    target.removeEventListener('pointerup', up);
+    target.removeEventListener('pointercancel', up);
+    if (!dragging) {
+      if (!pip.big) {
+        if (pip.el.classList.contains('ctrls')) hideCtrls(); else showCtrls();
+      }
+      return;
+    }
     pip.el.classList.remove('dragging');
     pip.el.style.transition = '';
-    const a = trail[0], b = trail[trail.length - 1];
-    const dt = Math.max(16, b.t - a.t);
-    const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt;
-    const { w, h } = pipDims();
-    const px = pip.x + w / 2 + vx * 200;
-    const py = pip.y + h / 2 + vy * 200;
-    pip.corner = (py < window.innerHeight / 2 ? 't' : 'b') + (px < window.innerWidth / 2 ? 'l' : 'r');
-    prefs.set('pipCorner', pip.corner);
-    pipSnap(true);
+    // 指を離したときの勢いの分だけ滑らせてから止める
+    const a = trail[0], z = trail[trail.length - 1];
+    const dt = Math.max(16, z.t - a.t);
+    const vx = (z.x - a.x) / dt, vy = (z.y - a.y) / dt;
+    pipPlace(clamp(pip.x + vx * 140, b.minX, b.maxX), clamp(pip.y + vy * 140, b.minY, b.maxY), true);
+    pipSavePos();
   };
-  bar.addEventListener('pointermove', move);
-  bar.addEventListener('pointerup', up);
-  bar.addEventListener('pointercancel', up);
+  target.addEventListener('pointermove', move);
+  target.addEventListener('pointerup', up);
+  target.addEventListener('pointercancel', up);
 });
 
 let resizeRaf;
 window.addEventListener('resize', () => {
   cancelAnimationFrame(resizeRaf);
-  resizeRaf = requestAnimationFrame(() => pipSnap(false));
+  resizeRaf = requestAnimationFrame(() => pipRestore(false));
 });
 
 /* ---------------- タイマー ---------------- */
@@ -1353,7 +1584,6 @@ function startTimer(sec, label) {
   renderTimer(t);
   toast(`⏱ ${label} のタイマーを開始`);
   if (!timerTick) timerTick = setInterval(tickTimers, 250);
-  requestAnimationFrame(() => pipSnap(true));
 }
 
 function renderTimer(t) {
@@ -1420,10 +1650,7 @@ function removeTimer(t) {
   const i = timers.indexOf(t);
   if (i >= 0) timers.splice(i, 1);
   t.node.classList.add('out');
-  setTimeout(() => {
-    t.node.remove();
-    pipSnap(true);
-  }, 300);
+  setTimeout(() => t.node.remove(), 300);
   if (!timers.length) { clearInterval(timerTick); timerTick = null; }
 }
 
@@ -1431,30 +1658,30 @@ function removeTimer(t) {
 const form = $('#form');
 const fName = $('#fName');
 
-// ジャンル・種類のボタン選択
-function setupPicker(box, input, options, key, deselect) {
-  const sync = () => {
-    const v = input.value.trim();
-    box.querySelectorAll('.cat-pick').forEach((x) => x.classList.toggle('active', !v && x.textContent === state[key]));
-  };
-  input.addEventListener('input', sync);
+// ジャンル・種類のボタン選択(もう一度押すと選択を外せる)。選択肢は設定画面で編集する
+function setupPicker(box, listKey, key) {
+  const sync = () => box.querySelectorAll('.cat-pick').forEach((x) => {
+    x.classList.toggle('active', x.dataset.v === state[key]);
+    x.setAttribute('aria-pressed', String(x.dataset.v === state[key]));
+  });
   return () => {
     box.innerHTML = '';
-    options().forEach((c) => {
+    const opts = [...state.settings[listKey]];
+    // 選択肢から外した値のレシピを編集するときも、今の値は選べるように残す
+    if (state[key] && !opts.includes(state[key])) opts.push(state[key]);
+    opts.forEach((c) => {
       const b = el('button', 'cat-pick', c);
       b.type = 'button';
-      b.onclick = () => {
-        state[key] = deselect && state[key] === c ? '' : c;
-        input.value = '';
-        sync();
-      };
+      b.dataset.v = c;
+      b.onclick = () => { state[key] = state[key] === c ? '' : c; sync(); };
       box.append(b);
     });
     sync();
   };
 }
-const renderGenrePicks = setupPicker($('#genrePicks'), $('#fNewGenre'), allGenres, 'formGenre', false);
-const renderCoursePicks = setupPicker($('#coursePicks'), $('#fNewCourse'), allCourses, 'formCourse', true);
+const renderGenrePicks = setupPicker($('#genrePicks'), 'genres', 'formGenre');
+const renderCoursePicks = setupPicker($('#coursePicks'), 'courses', 'formCourse');
+document.querySelectorAll('[data-edit-cats]').forEach((b) => b.addEventListener('click', () => openSettings(b)));
 
 function setPhoto(dataUrl) {
   state.photo = dataUrl;
@@ -1530,13 +1757,11 @@ function openForm(id = null, preset = {}) {
   $('#formTitle').textContent = r ? 'レシピを編集' : '新しいレシピ';
   fName.value = r ? r.name : preset.name || '';
   fVideo.value = r ? r.videoUrl : preset.videoUrl || '';
-  $('#fNewGenre').value = '';
-  $('#fNewCourse').value = '';
-  state.formGenre = r ? r.genre : (state.genre !== 'all' ? state.genre : GENRES[0]);
+  state.formGenre = r ? r.genre : (state.genre !== 'all' ? state.genre : '');
   state.formCourse = r ? r.course : (state.course !== 'all' ? state.course : '');
   $('#fTime').value = r && r.time ? r.time : '';
   $('#fServ').value = r ? r.servings : 2;
-  $('#fTags').value = r ? r.tags.join(', ') : '';
+  $('#fTags').value = r ? r.tags.join(' ') : '';
   $('#fIng').value = r ? r.ingredients : '';
   $('#fSteps').value = r ? r.steps : '';
   $('#fMemo').value = r ? r.memo : preset.memo || '';
@@ -1582,11 +1807,11 @@ form.addEventListener('submit', async (e) => {
     ...(prev || {}),
     id: prev ? prev.id : uid(),
     name,
-    genre: $('#fNewGenre').value.trim() || state.formGenre || 'その他',
-    course: $('#fNewCourse').value.trim() || state.formCourse,
+    genre: state.formGenre,
+    course: state.formCourse,
     time: $('#fTime').value,
     servings: $('#fServ').value || 2,
-    tags: $('#fTags').value.split(/[,、，\s#＃]+/),
+    tags: $('#fTags').value.split(/[\s　]+/),
     photo: state.photo,
     videoUrl: fVideo.value.trim(),
     ingredients: $('#fIng').value.trim(),
@@ -1686,12 +1911,12 @@ const sync = { state: HAS_CLOUD ? 'syncing' : 'local', error: '', fromCache: tru
 function setSync(s, error = '') {
   sync.state = s;
   sync.error = error;
-  $('#syncDot').dataset.state = s;
+  $('#syncBadge').dataset.state = s;
   $('#accDot').dataset.state = s;
   $('#accStatus').dataset.state = s;
   $('#accStatusTitle').textContent = SYNC_TEXT[s][0];
   $('#accStatusSub').textContent = error || SYNC_TEXT[s][1];
-  $('#accountBtn').setAttribute('aria-label', `アカウントと同期:${SYNC_TEXT[s][0]}`);
+  $('#menuBtn').setAttribute('aria-label', s === 'offline' || s === 'error' ? `設定(${SYNC_TEXT[s][0]})` : '設定');
 }
 
 // Firestore の状態とネットワークから、いまの同期状態を決める
@@ -1726,20 +1951,81 @@ function paintAvatar(node, user) {
 
 function renderAccount() {
   const u = state.user;
-  paintAvatar($('#avatar'), u);
   paintAvatar($('#accAvatar'), u);
   $('#accUser').hidden = !u;
   $('#accName').textContent = u ? u.name || 'Google アカウント' : '';
   $('#accEmail').textContent = u ? u.email : '';
   $('#accSignIn').hidden = !!u || !HAS_CLOUD;
   $('#signOutBtn').hidden = !u;
-  $('#accInstallRow').hidden = !deferredInstall;
+  // すでにアプリとして開いているときは「ホーム画面に追加」を出さない
+  $('#accInstallRow').hidden = isStandalone();
+  $('#installSub').textContent = deferredInstall
+    ? 'アプリのように全画面で使えます'
+    : 'Chrome のメニュー(⋮)→「ホーム画面に追加」からも追加できます';
 }
 
-$('#accountBtn').addEventListener('click', () => {
+/* ---------------- 設定(ジャンル・種類の選択肢) ---------------- */
+function saveSettings() {
+  prefs.set('settings', state.settings);
+  if (repo.mode === 'cloud' && repo.cloud) repo.cloud.putSettings(state.settings);
+  settingsChanged();
+}
+
+// 選択肢が変わったら、開いている画面に反映する
+function settingsChanged() {
+  renderCatEditors();
+  renderChips();
+  if ($('#formOv').getAttribute('aria-hidden') === 'false') { renderGenrePicks(); renderCoursePicks(); }
+}
+
+function renderCatEditor(ul, kind, noun) {
+  ul.innerHTML = '';
+  const list = state.settings[kind];
+  if (!list.length) ul.append(el('li', 'empty-note', `${noun}はまだありません`));
+  list.forEach((name) => {
+    const li = el('li');
+    li.append(el('span', null, name));
+    const del = el('button');
+    del.type = 'button';
+    del.innerHTML = ICON.close;
+    del.setAttribute('aria-label', `「${name}」を選択肢から外す`);
+    del.onclick = () => {
+      state.settings[kind] = state.settings[kind].filter((x) => x !== name);
+      saveSettings();
+      toast(`「${name}」を選択肢から外しました`);
+    };
+    li.append(del);
+    ul.append(li);
+  });
+}
+
+function renderCatEditors() {
+  renderCatEditor($('#genreEdit'), 'genres', 'ジャンル');
+  renderCatEditor($('#courseEdit'), 'courses', '種類');
+}
+
+document.querySelectorAll('.add-row').forEach((f) => f.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = f.querySelector('input');
+  const kind = f.dataset.kind;
+  const name = input.value.trim().replace(/\s+/g, ' ');
+  if (!name) return input.focus();
+  if (state.settings[kind].includes(name)) {
+    toast(`「${name}」はすでにあります`);
+    return input.select();
+  }
+  if (state.settings[kind].length >= 30) return toast('これ以上は追加できません(30個まで)');
+  state.settings[kind] = [...state.settings[kind], name];
+  input.value = '';
+  saveSettings();
+}));
+
+function openSettings(origin) {
   renderAccount();
-  openOverlay($('#accountOv'), $('#accountBtn'));
-});
+  renderCatEditors();
+  openOverlay($('#settingsOv'), origin);
+}
+$('#menuBtn').addEventListener('click', (e) => openSettings(e.currentTarget));
 
 function cloudReady() {
   return new Promise((resolve, reject) => {
@@ -1785,7 +2071,7 @@ $('#gateLocal').addEventListener('click', () => {
   loadLocal();
 });
 $('#signOutBtn').addEventListener('click', async () => {
-  closeOverlay($('#accountOv'));
+  closeOverlay($('#settingsOv'));
   try { await repo.cloud.signOut(); } catch { toast('ログアウトできませんでした'); }
 });
 
@@ -1834,6 +2120,7 @@ window.RB = {
         continue;
       }
       const r = normalizeRecipe(c.data);
+      if (needsMigration(c.data) && !pending) repo.put(r).catch(() => {});
       if (!old) {
         state.recipes.push(r);
         changed = true;
@@ -1854,6 +2141,19 @@ window.RB = {
     sync.pending = pending;
     if (sync.state === 'error' && !fromCache) sync.state = 'syncing';
     evalSync();
+  },
+
+  // ほかの端末で選択肢を変えたとき。まだクラウドに無ければ、この端末の設定を送る
+  onSettings(data) {
+    if (!data) {
+      if (JSON.stringify(state.settings) !== JSON.stringify(DEFAULT_SETTINGS)) repo.cloud.putSettings(state.settings);
+      return;
+    }
+    const next = normalizeSettings(data);
+    if (JSON.stringify(next) === JSON.stringify(state.settings)) return;
+    state.settings = next;
+    prefs.set('settings', next);
+    settingsChanged();
   },
 
   onSyncError(err) {
@@ -1895,13 +2195,16 @@ async function migrateLocal(user) {
   toast(`この端末のレシピ ${ok} 件をクラウドに移しました`);
 }
 
+// 旧形式(category や「主菜」などの旧い種類名)のデータは新形式で保存し直す
+const needsMigration = (raw) => !('genre' in raw) || !!COURSE_MAP[raw.course];
+
 async function loadLocal() {
   repo.mode = 'local';
   try {
     const raw = await db.all();
     state.recipes = raw.map(normalizeRecipe);
     // 旧形式(category)のデータを新形式で保存し直す
-    for (const r of raw) if (!('genre' in r)) await db.put(getRecipe(r.id));
+    for (const r of raw) if (needsMigration(r)) await db.put(getRecipe(r.id));
   } catch {
     toast('このブラウザでは保存機能が使えません');
   }
@@ -1937,22 +2240,27 @@ function handlePendingShare() {
 
 /* ---------------- アプリ化(PWA) ---------------- */
 let deferredInstall = null;
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstall = e;
-  $('#accInstallRow').hidden = false;
+  renderAccount();
 });
 window.addEventListener('appinstalled', () => {
   deferredInstall = null;
-  $('#accInstallRow').hidden = true;
+  renderAccount();
   toast('ホーム画面に追加しました');
 });
 $('#installBtn').addEventListener('click', async () => {
-  if (!deferredInstall) return;
+  if (!deferredInstall) {
+    toast('Chrome のメニュー(⋮)→「ホーム画面に追加」から追加してください');
+    return;
+  }
   deferredInstall.prompt();
-  await deferredInstall.userChoice;
+  const choice = await deferredInstall.userChoice;
   deferredInstall = null;
-  $('#accInstallRow').hidden = true;
+  renderAccount();
+  if (choice.outcome === 'accepted') closeOverlay($('#settingsOv'));
 });
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

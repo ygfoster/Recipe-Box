@@ -17,13 +17,9 @@
     <div class="nav-inner">
       <span class="brand"><img class="brand-mark" src="icons/icon.svg" alt="" width="22" height="22"><span class="brand-name">Recipe Box</span></span>
       <span class="nav-spacer"></span>
-      <button class="account-btn" id="accountBtn" type="button" aria-label="アカウントと同期">
-        <span class="avatar" id="avatar"></span>
-        <span class="sync-dot" id="syncDot" data-state="local"></span>
-      </button>
-      <button class="btn small primary" id="addBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-        追加
+      <button class="menu-toggle" id="menuBtn" type="button" aria-label="設定">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span class="sync-badge" id="syncBadge" data-state="local"></span>
       </button>
     </div>
   </header>
@@ -53,24 +49,14 @@
         <button class="tool fav-tool" id="favFilter" type="button" aria-pressed="false" aria-label="お気に入りだけ表示">
           <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 20.5s-7.5-4.6-9.2-9.4C1.6 7.6 3.9 4.5 7.2 4.5c2 0 3.5 1.1 4.8 2.8 1.3-1.7 2.8-2.8 4.8-2.8 3.3 0 5.6 3.1 4.4 6.6-1.7 4.8-9.2 9.4-9.2 9.4z"/></svg>
         </button>
-        <label class="tool select">
-          <select id="timeFilter" aria-label="調理時間">
-            <option value="0">時間指定なし</option>
-            <option value="15">15分以内</option>
-            <option value="30">30分以内</option>
-            <option value="60">60分以内</option>
-          </select>
-        </label>
-        <label class="tool select">
-          <select id="sortSel" aria-label="並び替え">
-            <option value="new">新しい順</option>
-            <option value="rating">評価が高い順</option>
-            <option value="cooked">よく作る順</option>
-            <option value="stale">最近作ってない順</option>
-            <option value="time">早くできる順</option>
-            <option value="name">名前順</option>
-          </select>
-        </label>
+        <button class="tool menu-btn" id="timeMenu" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span class="menu-label"></span>
+          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="tool menu-btn" id="sortMenu" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 5v14M4 16l3 3 3-3M17 19V5M14 8l3-3 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="menu-label"></span>
+        </button>
       </div>
     </div>
 
@@ -97,35 +83,61 @@
     </section>
   </div>
 
-  <!-- アカウント・同期 -->
-  <div class="overlay" id="accountOv" aria-hidden="true">
-    <section class="sheet account" role="dialog" aria-modal="true" aria-labelledby="accTitle">
+  <!-- 設定 -->
+  <div class="overlay" id="settingsOv" aria-hidden="true">
+    <section class="sheet settings" role="dialog" aria-modal="true" aria-labelledby="setTitle">
       <header class="sheet-head">
-        <h2 id="accTitle">アカウント</h2>
+        <h2 id="setTitle">設定</h2>
         <button class="icon-btn" data-close type="button" aria-label="閉じる">
           <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
         </button>
       </header>
-      <div class="acc-body">
-        <div class="acc-status" id="accStatus">
-          <span class="sync-dot" id="accDot" data-state="local"></span>
-          <div class="acc-status-text">
-            <b id="accStatusTitle"></b>
-            <span id="accStatusSub"></span>
+      <div class="set-body">
+        <section class="set-sec">
+          <h3 class="set-h">同期</h3>
+          <div class="acc-status" id="accStatus">
+            <span class="sync-dot" id="accDot" data-state="local"></span>
+            <div class="acc-status-text">
+              <b id="accStatusTitle"></b>
+              <span id="accStatusSub"></span>
+            </div>
           </div>
-        </div>
-        <div class="acc-user" id="accUser" hidden>
-          <span class="avatar large" id="accAvatar"></span>
-          <div class="acc-user-text"><b id="accName"></b><span id="accEmail"></span></div>
-        </div>
-        <button class="btn primary wide" id="accSignIn" type="button" hidden>Google でログインして同期する</button>
+          <div class="acc-user" id="accUser" hidden>
+            <span class="avatar" id="accAvatar"></span>
+            <div class="acc-user-text"><b id="accName"></b><span id="accEmail"></span></div>
+          </div>
+          <button class="btn primary wide" id="accSignIn" type="button" hidden>Google でログインして同期する</button>
+        </section>
 
-        <ul class="acc-list">
-          <li id="accInstallRow" hidden><button type="button" id="installBtn">ホーム画面に追加<span>アプリのように全画面で使えます</span></button></li>
-          <li><button type="button" id="exportBtn">バックアップを書き出す<span>すべてのレシピを1つのファイルに保存</span></button></li>
-          <li><button type="button" id="importBtn">バックアップを読み込む<span>同じレシピは上書きされます</span></button></li>
-        </ul>
-        <input type="file" id="importFile" accept="application/json" hidden>
+        <section class="set-sec">
+          <h3 class="set-h">ジャンル</h3>
+          <ul class="edit-chips" id="genreEdit"></ul>
+          <form class="add-row" data-kind="genres" novalidate>
+            <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="新しいジャンル" aria-label="新しいジャンル">
+            <button class="btn small" type="submit">追加</button>
+          </form>
+        </section>
+
+        <section class="set-sec">
+          <h3 class="set-h">種類</h3>
+          <ul class="edit-chips" id="courseEdit"></ul>
+          <form class="add-row" data-kind="courses" novalidate>
+            <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="新しい種類" aria-label="新しい種類">
+            <button class="btn small" type="submit">追加</button>
+          </form>
+          <p class="hint">選択肢から外しても、登録済みのレシピのジャンル・種類はそのまま残ります。</p>
+        </section>
+
+        <section class="set-sec">
+          <h3 class="set-h">アプリ</h3>
+          <ul class="acc-list">
+            <li id="accInstallRow"><button type="button" id="installBtn">ホーム画面に追加<span id="installSub">アプリのように全画面で使えます</span></button></li>
+            <li><button type="button" id="exportBtn">バックアップを書き出す<span>すべてのレシピを1つのファイルに保存</span></button></li>
+            <li><button type="button" id="importBtn">バックアップを読み込む<span>同じレシピは上書きされます</span></button></li>
+          </ul>
+          <input type="file" id="importFile" accept="application/json" hidden>
+        </section>
+
         <button class="btn ghost danger wide" id="signOutBtn" type="button" hidden>ログアウト</button>
       </div>
     </section>
@@ -142,6 +154,9 @@
         <div class="d-pills" id="dPills"></div>
         <div class="d-titlebar">
           <h2 id="dTitle"></h2>
+          <button class="round-btn" id="dShare" type="button" aria-label="このレシピを共有">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3.5v11M8 7.5l4-4 4 4M7 11H6a1.5 1.5 0 00-1.5 1.5v6A1.5 1.5 0 006 20h12a1.5 1.5 0 001.5-1.5v-6A1.5 1.5 0 0018 11h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <button class="fav big" id="dFav" type="button" aria-label="お気に入り"></button>
         </div>
         <div class="stars" id="dStars" aria-label="評価"></div>
@@ -268,15 +283,13 @@
       </div>
 
       <div class="field">
-        <span class="lbl">ジャンル</span>
+        <div class="lbl-row"><span class="lbl">ジャンル</span><button class="link small" type="button" data-edit-cats>編集</button></div>
         <div class="cat-picks" id="genrePicks"></div>
-        <input id="fNewGenre" maxlength="20" autocomplete="off" placeholder="＋ 新しいジャンルを作る">
       </div>
 
       <div class="field">
-        <span class="lbl">種類</span>
+        <div class="lbl-row"><span class="lbl">種類</span><button class="link small" type="button" data-edit-cats>編集</button></div>
         <div class="cat-picks" id="coursePicks"></div>
-        <input id="fNewCourse" maxlength="20" autocomplete="off" placeholder="＋ 新しい種類を作る">
       </div>
 
       <div class="field-row">
@@ -292,8 +305,8 @@
 
       <div class="field">
         <label for="fTags">タグ</label>
-        <input id="fTags" maxlength="120" autocomplete="off" placeholder="作り置き, お弁当, 時短">
-        <p class="hint">カンマかスペースで区切ります</p>
+        <input id="fTags" maxlength="120" autocomplete="off" placeholder="作り置き お弁当 時短">
+        <p class="hint">スペースで区切ります</p>
       </div>
 
       <div class="field">
@@ -319,22 +332,52 @@
   </div>
 
   <!-- フローティング動画プレーヤー -->
+  <!-- 小さいとき:動画のどこを持っても動かせる。タップで操作ボタン
+       大きいとき:YouTube の操作がそのまま使える。上のバーで動かす -->
   <div class="pip" id="pip" hidden>
     <div class="pip-inner" id="pipInner">
       <div class="pip-bar" id="pipBar">
         <span class="grip" aria-hidden="true"></span>
         <span class="pip-title" id="pipTitle"></span>
-        <button class="pip-btn" id="pipSize" type="button" aria-label="大きさを切り替え">
-          <svg viewBox="0 0 24 24" width="14" height="14"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <button class="pip-btn" data-pip="small" type="button" aria-label="小さくする">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="pip-btn" id="pipClose" type="button" aria-label="動画を閉じる">
+        <button class="pip-btn" data-pip="close" type="button" aria-label="動画を閉じる">
           <svg viewBox="0 0 24 24" width="14" height="14"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <div class="pip-video" id="pipVideo"></div>
+      <div class="pip-video">
+        <div class="pip-frame" id="pipFrame"></div>
+        <div class="pip-shield" id="pipShield">
+          <button class="pip-ctl corner left" data-pip="big" type="button" aria-label="大きくする">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="pip-ctl corner right" data-pip="close" type="button" aria-label="動画を閉じる">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+          </button>
+          <button class="pip-ctl center" data-pip="toggle" type="button" aria-label="一時停止"></button>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- レシピ追加(親指が届く右下) -->
+  <button class="fab" id="addBtn" type="button" aria-label="レシピを追加">
+    <svg class="ramen" viewBox="0 0 32 32" width="38" height="38" aria-hidden="true">
+      <path d="M12.5 14.5L7.2 3.2M9.4 14.8L3.4 4.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M15.2 14.6c-1.2-1.8 1.2-2.8 0-4.6M18.6 14.6c-1.2-1.8 1.2-2.8 0-4.6M22 14.6c-1.2-1.8 1.2-2.8 0-4.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M3 16h26a13 11.5 0 0 1-26 0z" fill="currentColor"/>
+      <g class="face">
+        <circle cx="12.4" cy="20.6" r="1.25"/>
+        <circle cx="19.6" cy="20.6" r="1.25"/>
+        <path d="M14.4 23q1.6 1.4 3.2 0" fill="none" stroke-width="1.4" stroke-linecap="round"/>
+      </g>
+      <rect x="11" y="28" width="10" height="2.2" rx="1.1" fill="currentColor"/>
+    </svg>
+    <span class="fab-plus" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg></span>
+  </button>
+
+  <ul class="menu-pop" id="menuPop" role="listbox" hidden></ul>
   <div class="timers" id="timers" aria-live="polite"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
