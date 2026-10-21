@@ -999,6 +999,58 @@ body:not([data-tab="recipes"]) .fab { opacity: 0; transform: scale(.4) rotate(-3
   .slot-days { margin: 0 -20px; padding: 2px 20px 4px; }
 }
 
+/* =========================================================
+   食材から探す
+   ========================================================= */
+.fridge-link {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; border: 0; background: none; padding: 6px 10px; border-radius: 999px;
+  color: var(--action); font-size: 15px; font-weight: 600; transition: background .2s, transform .35s var(--spring);
+  animation: rise .9s .2s var(--ease) both;
+}
+.fridge-link:hover { background: var(--action-tint); }
+.fridge-link:active { transform: scale(.94); }
+.sheet.fridge { max-width: 600px; }
+.fridge-body { padding: 4px 24px 26px; display: grid; gap: 16px; }
+.fridge-body .add-row input { background: var(--sunken); }
+.fridge-suggest, .fridge-quick-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.fridge-suggest { margin-top: -6px; }
+.fridge-quick { display: grid; gap: 10px; }
+.add-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 7px 14px 7px 10px; font-size: 14px;
+  box-shadow: none; background: var(--sunken); color: var(--ink);
+}
+.add-chip svg { width: 14px; height: 14px; color: var(--action); }
+#fridgeChips li { background: var(--selected-bg); color: var(--selected-fg); }
+#fridgeChips li button { color: inherit; opacity: .7; }
+#fridgeChips li button:hover { background: rgba(127,127,127,.3); color: inherit; opacity: 1; }
+
+/* オン・オフの切り替え(オン=選択状態なのでインク色) */
+.switch-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--sunken); font-size: 15px; font-weight: 500; cursor: pointer; }
+.switch-row input { position: absolute; opacity: 0; pointer-events: none; }
+.switch { position: relative; flex: none; width: 50px; height: 30px; border-radius: 999px; background: var(--ink-3); transition: background .3s var(--ease); }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.2); transition: transform .35s var(--spring); }
+.switch-row input:checked + .switch { background: var(--selected-bg); }
+.switch-row input:checked + .switch::after { transform: translateX(20px); }
+.switch-row input:focus-visible + .switch { outline: 2px solid var(--action); outline-offset: 2px; }
+
+.fridge-results-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: -6px; }
+.fridge-results-head .set-h:empty { visibility: hidden; }
+.fridge-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.fridge-results.animate .fr-item { animation: rise .45s var(--ease) both; animation-delay: calc(var(--i) * 30ms); }
+.fr-item { border-radius: 16px; background: var(--sunken); padding: 4px 4px 4px; }
+.fr-main { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px; border: 0; background: none; text-align: left; border-radius: 12px; transition: background .2s; }
+.fr-main:hover { background: var(--fill); }
+.fr-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.fr-text b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-missing { font-size: 14px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-missing em { font-style: normal; font-weight: 700; margin-right: 6px; }
+.fr-ready { font-size: 14px; font-weight: 700; color: var(--success); }
+.fr-used { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-add { margin: 0 0 6px 72px; }
+@media (max-width: 640px) {
+  .fridge-body { padding: 4px 20px 26px; }
+}
+
 /* ---------- Keyframes ---------- */
 @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 @keyframes pop { from { opacity: 0; transform: scale(1.08); } to { opacity: 1; transform: none; } }

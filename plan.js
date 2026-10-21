@@ -485,7 +485,18 @@ const UNIT_ALIAS = { グラム: 'g', cc: 'ml', mL: 'ml', ミリリットル: 'ml
 
 // 「玉ねぎ(みじん切り)」「・玉ねぎ」なども同じ材料として扱う
 const stripNote = (name) => name.replace(/[（(][^）)]*[）)]/g, '').replace(/^[・\-－●○◎※*＊]+/, '').trim();
-const ingKey = (name) => norm(stripNote(name)).replace(/[\s・]/g, '');
+// 漢字・ひらがなの書き分けが多い食材は、同じものとして扱う
+const SYNONYMS = new Map(Object.entries({
+  たまご: '卵', 玉子: '卵', 玉葱: '玉ねぎ', たまねぎ: '玉ねぎ', にんじん: '人参', 馬鈴薯: 'じゃがいも', 生姜: 'しょうが',
+  挽肉: 'ひき肉', 挽き肉: 'ひき肉', 合挽き肉: '合いびき肉', 合い挽き肉: '合いびき肉', 葱: 'ねぎ', 長葱: '長ねぎ',
+  胡瓜: 'きゅうり', 茄子: 'なす', 大蒜: 'にんにく', 椎茸: 'しいたけ', とり肉: '鶏肉', 鳥肉: '鶏肉', 南瓜: 'かぼちゃ',
+  ぎゅうにゅう: '牛乳', ご飯: 'ごはん', 御飯: 'ごはん', はくさい: '白菜', だいこん: '大根', ほうれん草: 'ほうれんそう',
+  しょう油: 'しょうゆ', 醤油: 'しょうゆ', 胡椒: 'こしょう', 味噌: 'みそ',
+}).map(([k, v]) => [norm(k), norm(v)]));
+const ingKey = (name) => {
+  const k = norm(stripNote(name)).replace(/[\s・]/g, '');
+  return SYNONYMS.get(k) || k;
+};
 const isSeasoning = (name, header) => {
   const k = ingKey(name);
   return SEASONINGS.has(k) || /(油|ソース|だし|の素|酢)$/.test(k) || SEASON_HEADER.test(header);

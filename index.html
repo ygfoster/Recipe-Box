@@ -40,6 +40,10 @@
         </button>
         <ul class="suggest" id="suggest" role="listbox"></ul>
       </div>
+      <button class="fridge-link" id="fridgeBtn" type="button">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5.5" y="2.5" width="13" height="19" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.5 10h13M9 6v1.5M9 13v2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        冷蔵庫の食材から探す
+      </button>
     </section>
 
     <nav class="chips" id="genreChips" aria-label="ジャンル"></nav>
@@ -153,6 +157,44 @@
       <button class="btn primary wide" id="gateSignIn" type="button">Google でログイン</button>
       <p class="gate-error" id="gateError" hidden></p>
       <button class="link" id="gateLocal" type="button">ログインせずに使う(この端末だけに保存)</button>
+    </section>
+  </div>
+
+  <!-- 食材から探す -->
+  <div class="overlay" id="fridgeOv" aria-hidden="true">
+    <section class="sheet fridge" role="dialog" aria-modal="true" aria-labelledby="fridgeTitle">
+      <header class="sheet-head">
+        <div class="head-text"><p class="eyebrow">登録済みのレシピから</p><h2 id="fridgeTitle">食材から探す</h2></div>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="fridge-body">
+        <form class="add-row" id="fridgeAdd" novalidate>
+          <input id="fridgeInput" maxlength="60" autocomplete="off" enterkeyhint="done" placeholder="冷蔵庫にある食材(例:卵　玉ねぎ)" aria-label="冷蔵庫にある食材">
+          <button class="btn small" type="submit">追加</button>
+        </form>
+        <div class="fridge-suggest" id="fridgeSuggest" hidden></div>
+        <ul class="edit-chips" id="fridgeChips"></ul>
+
+        <div class="fridge-quick" id="fridgeQuickWrap">
+          <h3 class="set-h">よく使う食材</h3>
+          <div class="fridge-quick-list" id="fridgeQuick"></div>
+        </div>
+
+        <label class="switch-row">
+          <span>調味料は家にあるものとして探す</span>
+          <input type="checkbox" id="fridgeSeason" checked>
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+
+        <div class="fridge-results-head">
+          <h3 class="set-h" id="fridgeCount"></h3>
+          <button class="link small" id="fridgeClear" type="button">食材をすべて外す</button>
+        </div>
+        <ul class="fridge-results" id="fridgeResults"></ul>
+        <p class="pick-empty" id="fridgeEmpty"></p>
+      </div>
     </section>
   </div>
 
@@ -539,5 +581,6 @@
   <script src="firebase-config.js"></script>
   <script src="app.js"></script>
   <script src="plan.js"></script>
+  <script src="fridge.js"></script>
 </body>
 </html>
