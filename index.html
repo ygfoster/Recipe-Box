@@ -12,10 +12,22 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="intro" id="intro" role="button" tabindex="0" aria-label="タップしてレシピボックスをはじめる" hidden>
+    <img class="intro-mark" src="icons/icon.svg" width="88" height="88" alt="">
+    <h1 class="intro-title">レシピボックス</h1>
+    <p class="intro-copy">お気に入りの味を、ひとつの場所に。</p>
+    <p class="intro-hint">タップしてはじめる</p>
+  </div>
+  <script>
+    // 起動したときだけ出す(同じ起動中の再読み込みや、共有メニューから開いたときは出さない)
+    try {
+      if (!sessionStorage.getItem('rb:intro') && !/share_/.test(location.search)) document.getElementById('intro').hidden = false;
+    } catch (e) { /* 保存できない環境では出さない */ }
+  </script>
 
   <header class="nav" id="nav">
     <div class="nav-inner">
-      <span class="brand"><span class="brand-name">Recipe Box</span></span>
+      <span class="brand"><span class="brand-name">レシピボックス</span></span>
       <span class="nav-spacer"></span>
       <button class="menu-toggle" id="menuBtn" type="button" aria-label="設定">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -27,10 +39,10 @@
   <main class="wrap">
     <!-- レシピ -->
     <div class="view" id="viewRecipes">
-    <section class="hero">
-      <h1>レシピボックス</h1>
-      <p class="sub">お気に入りの味を、ひとつの場所に。</p>
+    <!-- 今日の献立(いちばん上に) -->
+    <section class="today" id="today" hidden></section>
 
+    <section class="home-top">
       <div class="search" id="search">
         <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <input id="q" type="search" placeholder="料理名・材料・#タグで検索" autocomplete="off" spellcheck="false"
@@ -46,24 +58,18 @@
       </button>
     </section>
 
-    <nav class="chips" id="genreChips" aria-label="ジャンル"></nav>
-    <nav class="chips sub-chips" id="courseChips" aria-label="種類"></nav>
-
-    <div class="toolbar" id="toolbar">
-      <p class="count" id="count"></p>
-      <div class="tools">
-        <button class="tool fav-tool" id="favFilter" type="button" aria-pressed="false" aria-label="お気に入りだけ表示">
-          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 20.5s-7.5-4.6-9.2-9.4C1.6 7.6 3.9 4.5 7.2 4.5c2 0 3.5 1.1 4.8 2.8 1.3-1.7 2.8-2.8 4.8-2.8 3.3 0 5.6 3.1 4.4 6.6-1.7 4.8-9.2 9.4-9.2 9.4z"/></svg>
-        </button>
-        <button class="tool menu-btn" id="timeMenu" type="button" aria-haspopup="listbox" aria-expanded="false">
-          <span class="menu-label"></span>
-          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <button class="tool menu-btn" id="sortMenu" type="button" aria-haspopup="listbox" aria-expanded="false">
-          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 5v14M4 16l3 3 3-3M17 19V5M14 8l3-3 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span class="menu-label"></span>
-        </button>
-      </div>
+    <!-- 絞り込みは1行:ジャンル + 「絞り込み」(種類・時間・お気に入り・並び替えはシートで) -->
+    <div class="filter-row" id="filterRow">
+      <nav class="chips" id="genreChips" aria-label="ジャンル"></nav>
+      <button class="filter-btn" id="filterBtn" type="button" aria-label="絞り込みと並び替え">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <span>絞り込み</span>
+        <b class="filter-n" id="filterN" hidden></b>
+      </button>
+    </div>
+    <div class="result-line" id="resultLine">
+      <span class="count" id="count"></span>
+      <span class="active-filters" id="activeFilters"></span>
     </div>
 
     <section class="grid" id="grid"></section>
@@ -157,6 +163,46 @@
       <button class="btn primary wide" id="gateSignIn" type="button">Google でログイン</button>
       <p class="gate-error" id="gateError" hidden></p>
       <button class="link" id="gateLocal" type="button">ログインせずに使う(この端末だけに保存)</button>
+    </section>
+  </div>
+
+  <!-- 絞り込みと並び替え -->
+  <div class="overlay" id="filterOv" aria-hidden="true">
+    <section class="sheet filter" role="dialog" aria-modal="true" aria-labelledby="filterTitle">
+      <header class="sheet-head">
+        <h2 id="filterTitle">絞り込み</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="set-body">
+        <section class="set-sec" id="fCourseSec">
+          <h3 class="set-h">種類</h3>
+          <div class="filter-chips" id="fCourses"></div>
+        </section>
+        <section class="set-sec">
+          <h3 class="set-h">調理時間</h3>
+          <div class="segmented wide" id="fTimes" role="group" aria-label="調理時間">
+            <button type="button" data-v="0">指定なし</button>
+            <button type="button" data-v="15">15分以内</button>
+            <button type="button" data-v="30">30分以内</button>
+            <button type="button" data-v="60">60分以内</button>
+          </div>
+        </section>
+        <label class="switch-row">
+          <span>お気に入りだけ</span>
+          <input type="checkbox" id="fFav">
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+        <section class="set-sec">
+          <h3 class="set-h">並び替え</h3>
+          <ul class="radio-list" id="fSort"></ul>
+        </section>
+        <div class="filter-foot">
+          <button class="btn ghost" id="fClear" type="button">条件をクリア</button>
+          <button class="btn primary" id="fShow" type="button" data-close></button>
+        </div>
+      </div>
     </section>
   </div>
 
@@ -329,6 +375,11 @@
               <span class="nl-value" id="nlStaples"></span>
               <svg class="nl-chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button></li>
+            <li><button type="button" data-page-to="meals">
+              <span class="nl-text"><span class="nl-title">献立で使う食事</span></span>
+              <span class="nl-value" id="nlMeals"></span>
+              <svg class="nl-chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button></li>
             <li><button type="button" data-page-to="trash">
               <span class="nl-text"><span class="nl-title">ゴミ箱</span><span class="nl-sub">削除したレシピ(30日間)</span></span>
               <span class="nl-value" id="nlTrash"></span>
@@ -420,6 +471,28 @@
       </div>
     </div>
 
+
+    <!-- 献立で使う食事 -->
+    <div class="set-page" data-page="meals" hidden>
+      <header class="sheet-head sub-head">
+        <button class="back-btn" data-page-back type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          設定
+        </button>
+        <h2>献立で使う食事</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="set-body">
+        <p class="hint">献立の画面に出す枠を選びます。オフにしても、すでに入れた料理は消えずに表示されます。</p>
+        <div class="switch-list" id="mealSwitches">
+          <label class="switch-row"><span>朝ごはん</span><input type="checkbox" data-meal="breakfast"><span class="switch" aria-hidden="true"></span></label>
+          <label class="switch-row"><span>昼ごはん</span><input type="checkbox" data-meal="lunch"><span class="switch" aria-hidden="true"></span></label>
+          <label class="switch-row"><span>晩ごはん</span><input type="checkbox" data-meal="dinner"><span class="switch" aria-hidden="true"></span></label>
+        </div>
+      </div>
+    </div>
 
     <!-- ゴミ箱 -->
     <div class="set-page" data-page="trash" hidden>
@@ -682,7 +755,6 @@
     <span class="fab-plus" aria-hidden="true"><svg viewBox="0 0 24 24" width="12" height="12"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg></span>
   </button>
 
-  <ul class="menu-pop" id="menuPop" role="listbox" hidden></ul>
   <div class="timers" id="timers" aria-live="polite"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

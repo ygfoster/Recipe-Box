@@ -118,8 +118,7 @@ svg { flex: none; }
 }
 .nav-spacer { flex: 1; }
 .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; letter-spacing: -.01em; }
-.brand-name { opacity: 0; transform: translateY(6px); transition: opacity .4s var(--ease), transform .4s var(--ease); }
-.nav.scrolled .brand-name { opacity: 1; transform: none; }
+.brand-name { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
 
 .menu-toggle {
   position: relative; width: 40px; height: 40px; margin-right: -8px; border: 0; padding: 0; border-radius: 50%;
@@ -175,16 +174,9 @@ svg { flex: none; }
 
 .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 120px; }
 
-/* ---------- Hero ---------- */
-.hero { padding: 36px 0 8px; text-align: center; }
-.hero h1 {
-  margin: 0; font-size: clamp(40px, 8vw, 64px); font-weight: 700; letter-spacing: -.03em; line-height: 1.1;
-  animation: rise .9s var(--ease) both;
-}
-.sub {
-  margin: 10px 0 28px; color: var(--ink-2); font-size: clamp(16px, 2.4vw, 21px);
-  animation: rise .9s .08s var(--ease) both;
-}
+/* ---------- ホームの上部(検索から始める) ---------- */
+.home-top { padding: 12px 0 0; text-align: center; }
+.sub { margin: 0; color: var(--ink-2); }
 
 /* ---------- Search ---------- */
 .search {
@@ -237,9 +229,8 @@ svg { flex: none; }
 
 /* ---------- Chips(絞り込み) ---------- */
 .chips {
-  display: flex; gap: 8px; margin: 26px -20px 0; padding: 4px 20px 8px;
-  overflow-x: auto; scrollbar-width: none; justify-content: safe center;
-  animation: rise .9s .24s var(--ease) both;
+  display: flex; gap: 8px; margin: 0; padding: 4px 0 8px;
+  overflow-x: auto; scrollbar-width: none;
 }
 .chips::-webkit-scrollbar { display: none; }
 .chip {
@@ -252,49 +243,70 @@ svg { flex: none; }
 .chip:active { transform: scale(.94); }
 .chip .n { margin-left: 6px; font-size: 12px; opacity: .55; font-variant-numeric: tabular-nums; }
 .chip.active { background: var(--selected-bg); color: var(--selected-fg); }
-.sub-chips { margin-top: 4px; animation-delay: .3s; }
-.sub-chips .chip { padding: 6px 14px; font-size: 14px; box-shadow: none; background: var(--fill); }
-.sub-chips .chip.active { background: var(--selected-bg); color: var(--selected-fg); }
-
-/* ---------- Toolbar ---------- */
-.toolbar {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin: 16px 0 14px; animation: rise .9s .34s var(--ease) both;
-}
-.count { margin: 0; color: var(--ink-2); font-size: 14px; font-weight: 500; white-space: nowrap; }
-.tools { display: flex; gap: 8px; align-items: center; min-width: 0; }
-.tool {
-  position: relative; flex: none; height: 34px; border: 0; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow);
-  display: inline-flex; align-items: center; color: var(--ink); font-size: 14px; font-weight: 500;
+/* ---------- 絞り込み(1行) ---------- */
+.filter-row { display: flex; align-items: center; gap: 8px; margin: 18px -20px 0; padding: 0 20px; }
+.filter-row .chips { flex: 1; min-width: 0; margin-left: -20px; padding-left: 20px; mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+.filter-btn {
+  flex: none; height: 38px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 0; border-radius: 999px;
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-size: 14px; font-weight: 600;
   transition: transform .35s var(--spring), background .3s, color .3s;
 }
-.tool:active { transform: scale(.94); }
-.fav-tool { width: 34px; justify-content: center; padding: 0; color: var(--ink-2); }
-.fav-tool path { fill: none; stroke: currentColor; stroke-width: 2; transition: fill .3s; }
-.fav-tool[aria-pressed="true"] { background: var(--selected-bg); color: var(--favorite); }
-.fav-tool[aria-pressed="true"] path { fill: currentColor; stroke: currentColor; }
-/* アプリ独自のプルダウン */
-.menu-btn { gap: 6px; padding: 0 14px; white-space: nowrap; }
-.menu-btn svg { color: var(--ink-2); transition: transform .35s var(--ease); }
-.menu-btn[aria-expanded="true"] svg:last-child { transform: rotate(180deg); }
-.menu-btn.on { background: var(--selected-bg); color: var(--selected-fg); }
-.menu-btn.on svg { color: currentColor; }
-.menu-pop {
-  position: fixed; z-index: 85; margin: 0; padding: 6px; list-style: none; min-width: 200px; max-width: calc(100vw - 16px);
-  background: var(--surface);
-  border-radius: 16px; border: 1px solid var(--line); box-shadow: var(--shadow-hover);
-  opacity: 0; transform: scale(.92) translateY(-6px); transform-origin: top right;
-  transition: opacity .2s var(--ease), transform .35s var(--spring);
+.filter-btn:active { transform: scale(.94); }
+.filter-btn.on { background: var(--selected-bg); color: var(--selected-fg); }
+.filter-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 11px; line-height: 18px; text-align: center; background: rgba(127,127,127,.35); }
+.result-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 14px; min-height: 28px; }
+.count { color: var(--ink-2); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.active-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.af-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 12px; border: 0; border-radius: 999px;
+  background: var(--selected-bg); color: var(--selected-fg); font-size: 13px; font-weight: 600; animation: pop .35s var(--ease) both;
 }
-.menu-pop.open { opacity: 1; transform: none; }
-.menu-item {
-  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px 0 10px; border-radius: 10px;
-  font-size: 15px; cursor: pointer; outline: none; transition: background .15s;
+.af-chip svg { width: 12px; height: 12px; opacity: .7; }
+
+/* 絞り込みシート */
+.sheet.filter { max-width: 480px; }
+.filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-chips .chip { box-shadow: none; background: var(--sunken); }
+.filter-chips .chip.active { background: var(--selected-bg); color: var(--selected-fg); }
+.segmented.wide button { font-size: 14px; }
+.radio-list { list-style: none; margin: 0; padding: 0; border-radius: 16px; background: var(--sunken); overflow: hidden; }
+.radio-list li + li { border-top: 1px solid var(--line); }
+.radio-item { width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border: 0; background: none; font-size: 15px; text-align: left; transition: background .2s; }
+.radio-item:hover { background: var(--fill); }
+.ri-mark { width: 18px; height: 18px; color: var(--ink); opacity: 0; transform: scale(.6); transition: opacity .2s, transform .35s var(--spring); }
+.radio-item.selected { font-weight: 700; }
+.radio-item.selected .ri-mark { opacity: 1; transform: none; }
+.filter-foot { display: flex; gap: 10px; }
+.filter-foot .btn { flex: 1; }
+.switch-list { display: grid; gap: 8px; }
+
+/* ---------- 今日の献立(ホームのいちばん上) ---------- */
+.today { margin-top: 14px; padding: 14px 14px 10px; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); animation: rise .5s var(--ease) both; }
+.today-head { display: flex; align-items: baseline; gap: 8px; margin: 0 4px 6px; }
+.today-head h2 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+.today-date { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.today-list { list-style: none; margin: 0; padding: 0; }
+.today-item { width: 100%; display: flex; align-items: center; gap: 12px; padding: 6px 4px; border: 0; background: none; border-radius: 14px; text-align: left; transition: background .2s; }
+.today-item:hover { background: var(--fill); }
+.today-item .pick-thumb { width: 52px; height: 52px; }
+.today-chev { color: var(--ink-3); flex: none; display: grid; }
+.today-empty { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 4px 4px; border: 0; background: none; font-size: 15px; color: var(--ink-2); text-align: left; }
+.today-go { color: var(--action); font-weight: 600; white-space: nowrap; }
+
+/* ---------- 起動画面 ---------- */
+.intro {
+  position: fixed; inset: 0; z-index: 95; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; background: var(--bg); text-align: center; cursor: pointer; outline: none;
+  transition: opacity .5s var(--ease), transform .5s var(--ease);
 }
-.menu-item:hover, .menu-item:focus-visible { background: var(--fill); }
-.menu-item .mi-check { width: 18px; height: 18px; flex: none; color: var(--ink); opacity: 0; }
-.menu-item.selected { font-weight: 600; }
-.menu-item.selected .mi-check { opacity: 1; }
+.intro.out { opacity: 0; transform: scale(1.04); pointer-events: none; }
+.intro-mark { border-radius: 22px; box-shadow: 0 16px 40px color-mix(in srgb, var(--brand) 35%, transparent); animation: introIn .9s .1s var(--spring) both; }
+.intro-title { margin: 14px 0 0; font-size: clamp(34px, 9vw, 52px); font-weight: 800; letter-spacing: -.03em; animation: rise .9s .3s var(--ease) both; }
+.intro-copy { margin: 0; font-size: 17px; color: var(--ink-2); animation: rise .9s .45s var(--ease) both; }
+.intro-hint { position: absolute; bottom: calc(48px + env(safe-area-inset-bottom, 0px)); margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-3); animation: fadeIn .8s 1.2s var(--ease) both, breathe 2.4s 2s ease-in-out infinite; }
+
+.vp-note { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-2); }
+.vp-apply { display: block; margin-top: 4px; padding: 2px 0; }
 
 /* ---------- Grid / Card ---------- */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 22px; }
@@ -1137,6 +1149,8 @@ body:not([data-tab="recipes"]) .fab { opacity: 0; transform: scale(.4) rotate(-3
 @keyframes wiggle { 25% { transform: rotate(-12deg); } 50% { transform: rotate(10deg); } 75% { transform: rotate(-6deg); } }
 @keyframes steam { 0%, 100% { opacity: 1; transform: translateY(0); } 50% { opacity: .5; transform: translateY(-3px); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes introIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@keyframes breathe { 50% { opacity: .45; } }
 @keyframes fabIn { from { opacity: 0; transform: scale(.4) rotate(-40deg); } to { opacity: 1; transform: none; } }
 @keyframes timerIn { from { opacity: 0; transform: translateY(30px) scale(.85); } to { opacity: 1; transform: none; } }
 @keyframes timerOut { to { opacity: 0; transform: translateY(20px) scale(.85); } }
@@ -1150,11 +1164,8 @@ body:not([data-tab="recipes"]) .fab { opacity: 0; transform: scale(.4) rotate(-3
 @media (max-width: 640px) {
   .wrap { padding: 0 16px 120px; }
   .nav-inner { padding: 0 16px; }
-  .chips { margin: 22px -16px 0; padding: 4px 16px 8px; justify-content: flex-start; }
-  .sub-chips { margin-top: 2px; }
-  .toolbar { flex-wrap: wrap; }
-  .tools { width: 100%; overflow-x: auto; scrollbar-width: none; }
-  .count { order: -1; }
+  .filter-row { margin: 16px -16px 0; padding: 0 16px; }
+  .filter-row .chips { margin-left: -16px; padding-left: 16px; }
   .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .card-body { padding: 10px 12px 14px; }
   .card-body h3 { font-size: 15px; }

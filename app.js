@@ -8,7 +8,10 @@ const DEFAULT_SETTINGS = {
   genres: ['和食', '洋食', '中華'],
   courses: ['メイン', 'サイド', 'スープ'],
   staples: null, // よく使う食材。null の間はレシピから自動で選ぶ
+  meals: ['dinner'], // 献立で使う食事(朝 breakfast・昼 lunch・晩 dinner)
 };
+const MEAL_ORDER = ['breakfast', 'lunch', 'dinner'];
+const MEAL_SHORT = { breakfast: '朝', lunch: '昼', dinner: '晩' };
 // 以前の種類名を新しい呼び方に置き換える
 const COURSE_MAP = { 主菜: 'メイン', 副菜: 'サイド', 汁物: 'スープ', 主食: 'ライス' };
 const $ = (s) => document.querySelector(s);
@@ -48,6 +51,10 @@ function normalizeSettings(s) {
     genres: list(s && s.genres, DEFAULT_SETTINGS.genres),
     courses: list(s && s.courses, DEFAULT_SETTINGS.courses).map((c) => COURSE_MAP[c] || c),
     staples: s && Array.isArray(s.staples) ? list(s.staples, []) : null,
+    meals: (() => {
+      const m = s && Array.isArray(s.meals) ? MEAL_ORDER.filter((x) => s.meals.includes(x)) : [];
+      return m.length ? m : DEFAULT_SETTINGS.meals.slice();
+    })(),
   };
 }
 state.settings = normalizeSettings(prefs.get('settings', null));
@@ -379,6 +386,69 @@ async function fetchVideoTitle(url) {
   return null;
 }
 
+// YouTube の公式 API で、タイトルと概要欄を取る(firebase-config.js に API キーがあるときだけ)
+async function fetchYouTubeDetails(id) {
+  const key = window.RB_YOUTUBE_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`);
+    if (!res.ok) return null;
+    const j = await res.json();
+    const sn = j.items && j.items[0] && j.items[0].snippet;
+    return sn ? { title: sn.title || '', description: sn.description || '' } : null;
+  } catch {
+    return null;
+  }
+}
+
+// 概要欄から「材料」「作り方」を読み取る。料理動画でよくある書き方に合わせた手がかりで探す
+const DESC_ING = /^[\s【\[■◆●◇▼▽<＜《〈(（]*(材料|食材|ingredients?)/i;
+const DESC_STEP = /^[\s【\[■◆●◇▼▽<＜《〈(（]*(作り方|つくり方|手順|how\s*to)/i;
+const DESC_STOP = /^(https?:|#|▼|▽|-{3,}|={3,}|_{3,}|━|─|【?(使用|おすすめ|チャンネル|関連|お仕事|BGM|撮影|instagram|twitter|tiktok|sns|お問い合わせ)|チャンネル登録|使用(した)?(調理)?器具)/i;
+const DESC_SKIP_STEP = /^(オープニング|イントロ|エンディング|試食|はじめに|おわりに|まとめ)/;
+
+function descriptionToRecipe(desc) {
+  const ing = [];
+  const steps = [];
+  let mode = null;
+  let servings = null;
+  // ①②… は全角半角の統一で「1」になってしまうので、先に行頭から外す
+  const text = desc.replace(/^[ \t　]*[①-⑳❶-❿➀-➉]\s*/gm, '').normalize('NFKC');
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const short = line.length <= 30;
+    if (short && DESC_ING.test(line)) {
+      mode = 'ing';
+      const m = line.match(/(\d+)\s*(人|名)/);
+      if (m) servings = +m[1];
+      // 「材料:豚肉200g、玉ねぎ1個」のように1行で書いてある場合
+      const rest = line.split(/[:：]/).slice(1).join(':').trim();
+      if (rest) rest.split(/[、,]/).map((x) => x.trim()).filter(Boolean).forEach((x) => ing.push(x));
+      continue;
+    }
+    if (short && DESC_STEP.test(line)) { mode = 'steps'; continue; }
+    if (DESC_STOP.test(line)) { if (mode) mode = 'stop'; continue; }
+    if (mode === 'ing') {
+      // 【A】(タレ)などの小見出し
+      const sub = line.match(/^[【\[<＜■◆●◇(（]\s*([^】\]>＞)）]{1,12})\s*[】\]>＞)）]?$/);
+      if (sub && line.length <= 14) { ing.push(`【${sub[1].trim()}】`); continue; }
+      const item = line
+        .replace(/^[・\-－●○◎◇◆■□*＊✓✔☆★]+\s*/, '')
+        .replace(/\s*(?:[…‥]+|\.{2,}|・{2,}|．{2,}|[:：]|\s{2,}|\t)\s*/, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (item) ing.push(item);
+    } else if (mode === 'steps') {
+      const step = line.replace(/^(?:step\s*\d+[.:：)]?|\d+[.)．、]|[①-⑳]|\(\d+\)|（\d+）)\s*/i, '').trim();
+      const body = step.replace(/^\d{1,2}:\d{2}(?::\d{2})?\s*/, '');
+      if (step && !DESC_SKIP_STEP.test(body)) steps.push(step);
+    }
+  }
+  if (!ing.length && !steps.length) return null;
+  return { servings, ingredients: ing.slice(0, 60), steps: steps.slice(0, 40) };
+}
+
 /* ---------------- 材料・手順の解析 ---------------- */
 const AMOUNT_WORDS = '少々|適量|適宜|ひとつまみ|お好みで|少量|たっぷり|ひとかけ';
 const ING_RE = new RegExp(`^(.+?)[\\s:・…]*((?:大さじ|小さじ|カップ|約)?\\s*\\d[\\d.\\/]*.*|${AMOUNT_WORDS})$`);
@@ -603,8 +673,10 @@ function renderGrid() {
 
 function renderCount(n) {
   const total = state.loaded ? state.recipes.length : 0;
-  $('#count').textContent = total ? (n === total ? `${total} 件のレシピ` : `${n} / ${total} 件`) : '';
-  $('#toolbar').hidden = !total;
+  $('#count').textContent = total ? (n === total ? `${total}件` : `${n} / ${total}件`) : '';
+  $('#filterRow').hidden = !total;
+  $('#resultLine').hidden = !total;
+  renderActiveFilters();
 }
 
 function renderEmpty(n) {
@@ -662,13 +734,14 @@ function renderChipRow(box, key, values, withAll) {
 
 function renderChips() {
   renderChipRow($('#genreChips'), 'genre', allGenres(), true);
-  renderChipRow($('#courseChips'), 'course', allCourses(), false);
+  // 種類はシートで選ぶ。使われなくなった種類で絞り込んだままにしない
+  if (state.course !== 'all' && !state.recipes.some((r) => r.course === state.course)) state.course = 'all';
   recipesChanged(); // 献立・買い物の画面にもレシピ名などの変更を反映(plan.js)
 }
 
-/* ---------------- 独自のプルダウン ---------------- */
+/* ---------------- 絞り込みと並び替え(シート) ---------------- */
 const TIME_OPTS = [
-  { value: 0, label: '指定なし', button: '調理時間' },
+  { value: 0, label: '指定なし' },
   { value: 15, label: '15分以内' },
   { value: 30, label: '30分以内' },
   { value: 60, label: '60分以内' },
@@ -681,101 +754,102 @@ const SORT_OPTS = [
   { value: 'time', label: '早くできる順' },
   { value: 'name', label: '名前順' },
 ];
-const menuPop = $('#menuPop');
-let openMenuBtn = null;
+const filterOv = $('#filterOv');
+const labelOf = (opts, v) => (opts.find((o) => o.value === v) || opts[0]).label;
 
-function showMenu(btn, opts, current, pick) {
-  closeMenu(true);
-  openMenuBtn = btn;
-  btn.setAttribute('aria-expanded', 'true');
-  menuPop.innerHTML = '';
-  opts.forEach((o) => {
-    const li = el('li', 'menu-item' + (o.value === current ? ' selected' : ''));
-    li.setAttribute('role', 'option');
-    li.setAttribute('aria-selected', String(o.value === current));
-    li.tabIndex = -1;
-    const check = el('span', 'mi-check');
-    check.innerHTML = ICON.check;
-    li.append(check, o.label);
-    li.onclick = () => { closeMenu(); if (o.value !== current) pick(o.value); };
-    menuPop.append(li);
-  });
-  menuPop.hidden = false;
-  // ボタンの真下に。画面からはみ出す場合は左右・上下を調整
-  const r = btn.getBoundingClientRect();
-  const w = menuPop.offsetWidth, h = menuPop.offsetHeight;
-  const alignRight = r.right - w >= 8;
-  const left = alignRight ? r.right - w : Math.min(r.left, window.innerWidth - w - 8);
-  const below = r.bottom + 8 + h <= window.innerHeight - 8;
-  menuPop.style.left = `${Math.max(8, left)}px`;
-  menuPop.style.top = `${below ? r.bottom + 8 : Math.max(8, r.top - h - 8)}px`;
-  menuPop.style.transformOrigin = `${alignRight ? 'right' : 'left'} ${below ? 'top' : 'bottom'}`;
-  requestAnimationFrame(() => menuPop.classList.add('open'));
-  (menuPop.querySelector('.selected') || menuPop.firstChild).focus({ preventScroll: true });
-}
-
-function closeMenu(instant) {
-  if (!openMenuBtn) return;
-  openMenuBtn.setAttribute('aria-expanded', 'false');
-  const btn = openMenuBtn;
-  openMenuBtn = null;
-  menuPop.classList.remove('open');
-  if (instant) menuPop.hidden = true;
-  else setTimeout(() => { if (!openMenuBtn) menuPop.hidden = true; }, 200);
-  if (!instant && menuPop.contains(document.activeElement)) btn.focus({ preventScroll: true });
-}
-
-function setupMenu(btn, opts, get, set) {
-  const paint = () => {
-    const o = opts.find((x) => x.value === get()) || opts[0];
-    btn.querySelector('.menu-label').textContent = o.button || o.label;
-    return o;
-  };
-  btn.addEventListener('click', () => {
-    if (openMenuBtn === btn) return closeMenu();
-    showMenu(btn, opts, get(), (v) => { set(v); paint(); syncTools(); });
-  });
-  return paint;
-}
-
-document.addEventListener('pointerdown', (e) => {
-  if (openMenuBtn && !menuPop.contains(e.target) && !openMenuBtn.contains(e.target)) closeMenu();
-});
-window.addEventListener('scroll', () => closeMenu(true), { passive: true });
-window.addEventListener('resize', () => closeMenu(true));
-menuPop.addEventListener('keydown', (e) => {
-  const items = [...menuPop.children];
-  const i = items.indexOf(document.activeElement);
-  if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
-  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
-  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (items[i]) items[i].click(); }
-  else if (e.key === 'Escape' || e.key === 'Tab') { e.stopPropagation(); closeMenu(); }
-});
-
-const paintTime = setupMenu($('#timeMenu'), TIME_OPTS, () => state.time, (v) => {
-  state.time = v;
-  prefs.set('time', v);
-  renderGrid();
-});
-const paintSort = setupMenu($('#sortMenu'), SORT_OPTS, () => state.sort, (v) => {
-  state.sort = v;
-  prefs.set('sort', v);
-  renderGrid();
-});
-
-function syncTools() {
-  $('#favFilter').setAttribute('aria-pressed', String(state.fav));
-  paintTime();
-  paintSort();
-  $('#timeMenu').classList.toggle('on', !!state.time);
-}
-
-$('#favFilter').addEventListener('click', (e) => {
-  state.fav = !state.fav;
+function persistFilters() {
   prefs.set('fav', state.fav);
-  syncTools();
-  replay(e.currentTarget, 'pop');
+  prefs.set('time', state.time);
+  prefs.set('sort', state.sort);
+}
+
+// いま効いている条件は、件数の横に「外せるチップ」で出す(何で絞っているかが一目で分かる)
+function renderActiveFilters() {
+  const box = $('#activeFilters');
+  box.innerHTML = '';
+  const add = (label, clear) => {
+    const b = el('button', 'af-chip', label);
+    b.type = 'button';
+    b.insertAdjacentHTML('beforeend', ICON.close);
+    b.setAttribute('aria-label', `「${label}」の条件を外す`);
+    b.onclick = () => { clear(); persistFilters(); renderGrid(); };
+    box.append(b);
+  };
+  if (state.course !== 'all') add(state.course, () => { state.course = 'all'; });
+  if (state.time) add(labelOf(TIME_OPTS, state.time), () => { state.time = 0; });
+  if (state.fav) add('お気に入り', () => { state.fav = false; });
+  if (state.sort !== 'new') add(labelOf(SORT_OPTS, state.sort), () => { state.sort = 'new'; });
+  const n = box.children.length;
+  $('#filterN').hidden = !n;
+  $('#filterN').textContent = String(n);
+  $('#filterBtn').classList.toggle('on', n > 0);
+}
+
+function renderFilterSheet() {
+  const counts = {};
+  state.recipes.forEach((r) => { if (r.course) counts[r.course] = (counts[r.course] || 0) + 1; });
+  const courses = allCourses().filter((c) => counts[c]);
+  const box = $('#fCourses');
+  box.innerHTML = '';
+  $('#fCourseSec').hidden = !courses.length;
+  courses.forEach((c) => {
+    const on = state.course === c;
+    const b = el('button', 'chip' + (on ? ' active' : ''), c);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(on));
+    b.append(el('span', 'n', String(counts[c])));
+    b.onclick = () => { state.course = on ? 'all' : c; applyFilters(); };
+    box.append(b);
+  });
+  document.querySelectorAll('#fTimes button').forEach((b) => {
+    const on = +b.dataset.v === state.time;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  $('#fFav').checked = state.fav;
+  const ul = $('#fSort');
+  ul.innerHTML = '';
+  SORT_OPTS.forEach((o) => {
+    const on = state.sort === o.value;
+    const li = el('li');
+    const b = el('button', 'radio-item' + (on ? ' selected' : ''));
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(on));
+    const mark = el('span', 'ri-mark');
+    mark.innerHTML = ICON.check;
+    b.append(el('span', null, o.label), mark);
+    b.onclick = () => { state.sort = o.value; applyFilters(); };
+    li.append(b);
+    ul.append(li);
+  });
+  $('#fShow').textContent = `${state.recipes.filter(matches).length}件を表示`;
+  $('#fClear').disabled = !(state.course !== 'all' || state.time || state.fav || state.sort !== 'new');
+}
+
+function applyFilters() {
+  persistFilters();
   renderGrid();
+  renderFilterSheet();
+}
+
+$('#filterBtn').addEventListener('click', (e) => {
+  renderFilterSheet();
+  openOverlay(filterOv, e.currentTarget);
+});
+$('#fTimes').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  state.time = +b.dataset.v;
+  applyFilters();
+});
+$('#fFav').addEventListener('change', (e) => { state.fav = e.target.checked; applyFilters(); });
+$('#fClear').addEventListener('click', () => {
+  state.course = 'all';
+  state.time = 0;
+  state.fav = false;
+  state.sort = 'new';
+  applyFilters();
 });
 
 /* ---------------- Suggest (予測変換) ---------------- */
@@ -947,7 +1021,6 @@ window.addEventListener('popstate', (e) => {
     closeOverlayNow(top);
     return;
   }
-  closeMenu(true);
   onHistoryTab((e.state && e.state.tab) || 'recipes');
 });
 
@@ -1896,15 +1969,41 @@ function renderVideoPreview(autofill) {
   if (v.type !== 'youtube') return;
 
   const seq = ++videoSeq;
-  fetchVideoTitle(v.url).then((t) => {
+  Promise.all([fetchYouTubeDetails(v.id), fetchVideoTitle(v.url)]).then(([details, t0]) => {
     if (seq !== videoSeq) return;
+    const t = (details && details.title) || t0;
     title.textContent = t || 'YouTube の動画';
+    const filled = [];
     if (t && autofill && !fName.value.trim()) {
       fName.value = t.slice(0, 80);
       replay(fName, 'filled-flash');
-      toast('動画のタイトルを料理名に入れました');
+      filled.push('料理名');
     }
+    if (details) {
+      const parsed = descriptionToRecipe(details.description);
+      if (!parsed) {
+        text.append(el('span', 'vp-note', '概要欄に材料・作り方は見つかりませんでした'));
+      } else if (autofill && !$('#fIng').value.trim() && !$('#fSteps').value.trim()) {
+        applyDescription(parsed);
+        filled.push('材料', '作り方');
+      } else {
+        // すでに書いてあるときは、勝手に上書きせずボタンで選べるようにする
+        const b = el('button', 'link small vp-apply', '概要欄の材料・作り方で置き換える');
+        b.type = 'button';
+        b.onclick = () => { applyDescription(parsed); b.remove(); toast('概要欄の材料と作り方に置き換えました'); };
+        text.append(b);
+      }
+    }
+    if (filled.length) toast(`動画から${filled.join('・')}を入れました。内容を確認してください`);
   });
+}
+
+function applyDescription(p) {
+  const ing = $('#fIng');
+  const steps = $('#fSteps');
+  if (p.ingredients.length) { ing.value = p.ingredients.join('\n'); autoGrow(ing); replay(ing, 'filled-flash'); }
+  if (p.steps.length) { steps.value = p.steps.join('\n'); autoGrow(steps); replay(steps, 'filled-flash'); }
+  if (p.servings) $('#fServ').value = Math.min(20, p.servings);
 }
 fVideo.addEventListener('input', () => {
   clearTimeout(videoTimer);
@@ -2138,6 +2237,7 @@ function settingsChanged() {
   renderChips();
   if ($('#formOv').getAttribute('aria-hidden') === 'false') { renderGenrePicks(); renderCoursePicks(); }
   if ($('#fridgeOv').getAttribute('aria-hidden') === 'false') renderFridge();
+  recipesChanged(); // 献立の枠・今日の献立にも反映(plan.js)
 }
 
 // よく使う食材は「自動」のときもあるので、編集用の一覧はここから取る
@@ -2240,7 +2340,19 @@ function renderSettingsSummary() {
   $('#nlCourses').textContent = join(state.settings.courses);
   $('#nlStaples').textContent = Array.isArray(state.settings.staples) ? `${state.settings.staples.length}品` : '自動';
   $('#nlTrash').textContent = state.trash.length ? `${state.trash.length}件` : '';
+  $('#nlMeals').textContent = state.settings.meals.map((m) => MEAL_SHORT[m]).join('・');
+  document.querySelectorAll('#mealSwitches input').forEach((i) => { i.checked = state.settings.meals.includes(i.dataset.meal); });
 }
+
+$('#mealSwitches').addEventListener('change', (e) => {
+  const next = MEAL_ORDER.filter((m) => document.querySelector(`#mealSwitches input[data-meal="${m}"]`).checked);
+  if (!next.length) {
+    e.target.checked = true;
+    return toast('少なくとも1つは選んでください');
+  }
+  state.settings.meals = next;
+  saveSettings();
+});
 
 // page を渡すと、その項目の画面を開いた状態で始める(登録画面の「編集」など)
 function openSettings(origin, page) {
@@ -2570,9 +2682,22 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 
 /* ---------------- Init ---------------- */
+/* ---------------- 起動画面(タップでホームへ) ---------------- */
+const intro = $('#intro');
+function dismissIntro() {
+  if (intro.hidden || intro.classList.contains('out')) return;
+  try { sessionStorage.setItem('rb:intro', '1'); } catch { /* 保存できなくても進む */ }
+  intro.classList.add('out');
+  setTimeout(() => { intro.hidden = true; }, 520);
+}
+intro.addEventListener('click', dismissIntro);
+intro.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dismissIntro(); }
+});
+if (!intro.hidden) intro.focus({ preventScroll: true });
+
 // plan.js も読み込まれてから始める
 document.addEventListener('DOMContentLoaded', function init() {
-  syncTools();
   renderAccount();
   onScroll();
   if (!HAS_CLOUD) {

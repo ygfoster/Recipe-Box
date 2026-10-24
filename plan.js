@@ -81,6 +81,7 @@ async function writeDocs(store, ops) {
     if (op.type !== 'del') arr.push(op.d);
   });
   state[key] = arr;
+  if (store === 'plan') renderToday();
   try {
     await repo.batch(store, ops);
   } catch {
@@ -95,6 +96,7 @@ async function loadPlanLocal() {
   } catch { /* 保存機能が使えないブラウザ */ }
   renderShopCount();
   renderActiveView();
+  renderToday();
 }
 
 function resetPlanData() {
@@ -102,6 +104,7 @@ function resetPlanData() {
   state.shop = [];
   renderShopCount();
   renderActiveView();
+  renderToday();
 }
 
 // ほかの端末での変更(cloud.js から呼ばれる)
@@ -127,12 +130,76 @@ RB.onCollection = (store, changes) => {
   if (!changed) return;
   renderShopCount();
   if ((key === 'plan' && state.tab === 'plan') || (key === 'shop' && state.tab === 'shop')) renderActiveView();
+  if (key === 'plan') renderToday();
 };
 
 // レシピが追加・編集・削除されたとき(app.js の renderChips から呼ばれる)
 function recipesChanged() {
   if (state.tab === 'plan') renderPlan();
+  renderToday();
 }
+
+/* ---------------- ホームの「今日の献立」 ---------------- */
+// レシピを献立の人数で開く(今日の献立・献立の1品から)
+function openPlannedRecipe(e, origin) {
+  openDetail(e.recipeId, origin);
+  const r = getRecipe(e.recipeId);
+  if (r && e.servings !== r.servings) {
+    state.servings = e.servings;
+    $('#dIngBlock').classList.add('no-anim');
+    renderIngredients(r);
+  }
+}
+
+function renderToday() {
+  const box = $('#today');
+  if (!state.loaded || !state.recipes.length) { box.hidden = true; return; }
+  const today = dayFromToday(0);
+  const entries = state.plan
+    .filter((e) => e.date === today && getRecipe(e.recipeId))
+    .sort((a, b) => MEALS.findIndex((m) => m.id === a.meal) - MEALS.findIndex((m) => m.id === b.meal) || a.createdAt - b.createdAt);
+  box.hidden = false;
+  box.innerHTML = '';
+  const head = el('div', 'today-head');
+  head.append(el('h2', null, '今日の献立'), el('span', 'today-date', fmtDay(today)));
+  box.append(head);
+  if (!entries.length) {
+    // 決まっていないときは1行だけ。献立の画面へ
+    const b = el('button', 'today-empty');
+    b.type = 'button';
+    b.append(el('span', null, 'まだ決まっていません'), el('span', 'today-go', '献立を決める'));
+    b.onclick = () => goTab('plan');
+    box.append(b);
+    return;
+  }
+  const ul = el('ul', 'today-list');
+  const showMeal = new Set(entries.map((e) => e.meal)).size > 1 || state.settings.meals.length > 1;
+  entries.forEach((e) => {
+    const r = getRecipe(e.recipeId);
+    const li = el('li');
+    const b = el('button', 'today-item');
+    b.type = 'button';
+    const thumb = el('span', 'pick-thumb');
+    const img = heroImage(r);
+    if (img) { img.classList.add('loaded'); thumb.append(img); } else thumb.textContent = '🍽';
+    const text = el('span', 'pick-text');
+    text.append(el('b', null, r.name), el('span', null, [showMeal ? mealOf(e.meal).long : '', `${e.servings}人分`, r.time ? `${r.time}分` : ''].filter(Boolean).join(' · ')));
+    const chev = el('span', 'today-chev');
+    chev.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    b.append(thumb, text, chev);
+    b.onclick = () => openPlannedRecipe(e, b);
+    li.append(b);
+    ul.append(li);
+  });
+  box.append(ul);
+}
+
+// 日付が変わったあとにアプリへ戻ってきたとき、「今日」を更新する
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  renderToday();
+  if (state.tab === 'plan') renderPlan();
+});
 
 /* ---------------- 画面の切り替え ---------------- */
 const VIEWS = { recipes: '#viewRecipes', plan: '#viewPlan', shop: '#viewShop' };
@@ -219,7 +286,7 @@ function renderPlan(animate) {
     if (rel) head.append(el('span', 'day-rel', rel));
     day.append(head);
 
-    MEALS.forEach((m) => {
+    MEALS.filter((m) => state.settings.meals.includes(m.id) || entries.some((e) => e.date === date && e.meal === m.id)).forEach((m) => {
       const row = el('div', 'meal-row');
       row.append(el('span', 'meal-label', m.label));
       const list = el('div', 'meal-dishes');
@@ -407,16 +474,7 @@ $('#entryRemove').addEventListener('click', async () => {
 $('#entryOpen').addEventListener('click', () => {
   const e = state.plan.find((x) => x.id === entryId);
   closeOverlay($('#entryOv'));
-  if (e) setTimeout(() => {
-    openDetail(e.recipeId);
-    // 献立の人数で材料を表示する
-    const r = getRecipe(e.recipeId);
-    if (r && e.servings !== r.servings) {
-      state.servings = e.servings;
-      $('#dIngBlock').classList.add('no-anim');
-      renderIngredients(r);
-    }
-  }, 180);
+  if (e) setTimeout(() => openPlannedRecipe(e), 180);
 });
 
 /* レシピ画面から「献立に追加」 */
@@ -427,7 +485,8 @@ function openSlotPicker(recipeId, origin) {
   if (!r) return;
   slot.recipeId = recipeId;
   slot.date = dayFromToday(0);
-  slot.meal = prefs.get('lastMeal', 'dinner');
+  const meals = state.settings.meals;
+  slot.meal = meals.includes(prefs.get('lastMeal', 'dinner')) ? prefs.get('lastMeal', 'dinner') : meals[meals.length - 1];
   slot.servings = state.servings || r.servings;
   $('#slotTitle').textContent = r.name;
   renderSlot();
@@ -449,7 +508,9 @@ function renderSlot() {
     b.onclick = () => { slot.date = date; renderSlot(); };
     days.append(b);
   }
+  $('#slotMeals').hidden = state.settings.meals.length < 2;
   document.querySelectorAll('#slotMeals button').forEach((b) => {
+    b.hidden = !state.settings.meals.includes(b.dataset.meal);
     const on = b.dataset.meal === slot.meal;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
@@ -462,9 +523,10 @@ function renderSlot() {
   const inSlot = slotEntries(slot.date, slot.meal);
   const names = inSlot.map((e) => (getRecipe(e.recipeId) || {}).name).filter(Boolean);
   const dup = inSlot.some((e) => e.recipeId === slot.recipeId);
+  const meal = mealOf(slot.meal).long;
   $('#slotNote').textContent = dup
-    ? 'この日のこの食事には、すでに入っています'
-    : names.length ? `この枠の献立:${names.join('、')}` : '';
+    ? `この日の${meal}には、すでに入っています`
+    : names.length ? `この日の${meal}:${names.join('、')}` : `${meal}に追加します`;
   $('#slotNote').classList.toggle('warn', dup);
   $('#slotAdd').disabled = dup;
 }
