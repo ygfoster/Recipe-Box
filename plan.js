@@ -665,6 +665,31 @@ function renderShop(animate) {
     box.append(det);
   }
 
+  // リストをすべて削除(2段階。消したあとも少しの間は元に戻せる)
+  if (state.shop.length) {
+    const all = el('button', 'btn ghost danger wide shop-clear-all', 'リストをすべて削除');
+    all.type = 'button';
+    all.onclick = async () => {
+      if (!all.classList.contains('confirm')) {
+        all.classList.add('confirm');
+        all.textContent = `${state.shop.length}点をすべて削除する`;
+        setTimeout(() => { if (all.isConnected) { all.classList.remove('confirm'); all.textContent = 'リストをすべて削除'; } }, 3000);
+        return;
+      }
+      const saved = state.shop.map((x) => ({ ...x }));
+      await writeDocs('shopping', saved.map((x) => ({ type: 'del', id: x.id })));
+      renderShop();
+      toast('買い物リストを空にしました', {
+        label: '元に戻す',
+        run: async () => {
+          await writeDocs('shopping', saved.map((d) => ({ type: 'put', d })));
+          renderShop();
+        },
+      });
+    };
+    box.append(all);
+  }
+
   $('#shopEmpty').hidden = state.shop.length > 0;
   $('#shopShare').disabled = !todo.length;
   renderShopCount();

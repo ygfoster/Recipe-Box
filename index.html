@@ -284,9 +284,10 @@
     </section>
   </div>
 
-  <!-- 設定 -->
+  <!-- 設定:一覧から、各項目の画面へ進む -->
   <div class="overlay" id="settingsOv" aria-hidden="true">
     <section class="sheet settings" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <div class="set-page" data-page="main">
       <header class="sheet-head">
         <h2 id="setTitle">設定</h2>
         <button class="icon-btn" data-close type="button" aria-label="閉じる">
@@ -311,35 +312,29 @@
         </section>
 
         <section class="set-sec">
-          <h3 class="set-h">ジャンル</h3>
-          <ul class="edit-chips" id="genreEdit"></ul>
-          <form class="add-row" data-kind="genres" novalidate>
-            <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="新しいジャンル" aria-label="新しいジャンル">
-            <button class="btn small" type="submit">追加</button>
-          </form>
-        </section>
-
-        <section class="set-sec">
-          <h3 class="set-h">種類</h3>
-          <ul class="edit-chips" id="courseEdit"></ul>
-          <form class="add-row" data-kind="courses" novalidate>
-            <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="新しい種類" aria-label="新しい種類">
-            <button class="btn small" type="submit">追加</button>
-          </form>
-          <p class="hint">選択肢から外しても、登録済みのレシピのジャンル・種類はそのまま残ります。</p>
-        </section>
-
-        <section class="set-sec">
-          <div class="set-h-row">
-            <h3 class="set-h">よく使う食材</h3>
-            <button class="link small" id="stapleAuto" type="button" hidden>レシピから自動で選ぶ</button>
-          </div>
-          <ul class="edit-chips" id="stapleEdit"></ul>
-          <form class="add-row" data-kind="staples" novalidate>
-            <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="よく使う食材を追加" aria-label="よく使う食材を追加">
-            <button class="btn small" type="submit">追加</button>
-          </form>
-          <p class="hint" id="stapleHint"></p>
+          <h3 class="set-h">レシピの整理</h3>
+          <ul class="nav-list">
+            <li><button type="button" data-page-to="genres">
+              <span class="nl-text"><span class="nl-title">ジャンルを編集</span></span>
+              <span class="nl-value" id="nlGenres"></span>
+              <svg class="nl-chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button></li>
+            <li><button type="button" data-page-to="courses">
+              <span class="nl-text"><span class="nl-title">種類を編集</span></span>
+              <span class="nl-value" id="nlCourses"></span>
+              <svg class="nl-chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button></li>
+            <li><button type="button" data-page-to="staples">
+              <span class="nl-text"><span class="nl-title">よく使う食材を編集</span></span>
+              <span class="nl-value" id="nlStaples"></span>
+              <svg class="nl-chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button></li>
+            <li><button type="button" data-page-to="trash">
+              <span class="nl-text"><span class="nl-title">ゴミ箱</span><span class="nl-sub">削除したレシピ(30日間)</span></span>
+              <span class="nl-value" id="nlTrash"></span>
+              <svg class="nl-chev" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button></li>
+          </ul>
         </section>
 
         <section class="set-sec">
@@ -354,6 +349,98 @@
 
         <button class="btn ghost danger wide" id="signOutBtn" type="button" hidden>ログアウト</button>
       </div>
+    </div>
+
+    <!-- ジャンル -->
+    <div class="set-page" data-page="genres" hidden>
+      <header class="sheet-head sub-head">
+        <button class="back-btn" data-page-back type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          設定
+        </button>
+        <h2>ジャンル</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="set-body">
+        <p class="hint">レシピの登録と絞り込みで使う選択肢です。外しても、登録済みのレシピのジャンルはそのまま残ります。</p>
+        <ul class="edit-chips" id="genreEdit"></ul>
+        <form class="add-row" data-kind="genres" novalidate>
+          <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="新しいジャンル" aria-label="新しいジャンル">
+          <button class="btn small" type="submit">追加</button>
+        </form>
+      </div>
+    </div>
+
+
+    <!-- 種類 -->
+    <div class="set-page" data-page="courses" hidden>
+      <header class="sheet-head sub-head">
+        <button class="back-btn" data-page-back type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          設定
+        </button>
+        <h2>種類</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="set-body">
+        <p class="hint">メイン・サイドなどの選択肢です。外しても、登録済みのレシピの種類はそのまま残ります。</p>
+        <ul class="edit-chips" id="courseEdit"></ul>
+        <form class="add-row" data-kind="courses" novalidate>
+          <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="新しい種類" aria-label="新しい種類">
+          <button class="btn small" type="submit">追加</button>
+        </form>
+      </div>
+    </div>
+
+
+    <!-- よく使う食材 -->
+    <div class="set-page" data-page="staples" hidden>
+      <header class="sheet-head sub-head">
+        <button class="back-btn" data-page-back type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          設定
+        </button>
+        <h2>よく使う食材</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="set-body">
+        <p class="hint" id="stapleHint"></p>
+        <ul class="edit-chips" id="stapleEdit"></ul>
+        <form class="add-row" data-kind="staples" novalidate>
+          <input maxlength="20" autocomplete="off" enterkeyhint="done" placeholder="よく使う食材を追加" aria-label="よく使う食材を追加">
+          <button class="btn small" type="submit">追加</button>
+        </form>
+        <button class="link small" id="stapleAuto" type="button" hidden>レシピから自動で選ぶ方法に戻す</button>
+      </div>
+    </div>
+
+
+    <!-- ゴミ箱 -->
+    <div class="set-page" data-page="trash" hidden>
+      <header class="sheet-head sub-head">
+        <button class="back-btn" data-page-back type="button">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          設定
+        </button>
+        <h2>ゴミ箱</h2>
+        <button class="icon-btn" data-close type="button" aria-label="閉じる">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+        </button>
+      </header>
+      <div class="set-body">
+        <p class="hint">削除したレシピは30日間ここに残り、そのあと自動で完全に削除されます。</p>
+        <ul class="trash-list" id="trashList"></ul>
+        <p class="pick-empty" id="trashNone">ゴミ箱は空です</p>
+        <button class="btn ghost danger wide" id="trashClear" type="button" hidden>ゴミ箱を空にする</button>
+      </div>
+    </div>
+
     </section>
   </div>
 
@@ -502,12 +589,12 @@
       </div>
 
       <div class="field">
-        <div class="lbl-row"><span class="lbl">ジャンル</span><button class="link small" type="button" data-edit-cats>編集</button></div>
+        <div class="lbl-row"><span class="lbl">ジャンル</span><button class="link small" type="button" data-edit-cats="genres">編集</button></div>
         <div class="cat-picks" id="genrePicks"></div>
       </div>
 
       <div class="field">
-        <div class="lbl-row"><span class="lbl">種類</span><button class="link small" type="button" data-edit-cats>編集</button></div>
+        <div class="lbl-row"><span class="lbl">種類</span><button class="link small" type="button" data-edit-cats="courses">編集</button></div>
         <div class="cat-picks" id="coursePicks"></div>
       </div>
 

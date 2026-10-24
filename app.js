@@ -171,12 +171,20 @@ function replay(node, cls) {
 }
 
 let toastTimer;
-function toast(msg) {
+// action = { label: '元に戻す', run() {} } を渡すと、通知にボタンが付く(少し長めに表示)
+function toast(msg, action) {
   const t = $('#toast');
   t.textContent = msg;
+  t.classList.toggle('has-action', !!action);
+  if (action) {
+    const b = el('button', 'toast-action', action.label);
+    b.type = 'button';
+    b.onclick = () => { t.classList.remove('show'); clearTimeout(toastTimer); action.run(); };
+    t.append(b);
+  }
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => t.classList.remove('show'), action ? 5000 : 2200);
 }
 
 // 同期の上限に収まるよう、大きすぎる写真は画質と大きさを段階的に下げる
@@ -255,9 +263,59 @@ function normalizeRecipe(r) {
       ? r.cooked.filter((c) => c && /^\d{4}-\d{2}-\d{2}/.test(s(c.date)))
         .map((c) => ({ id: s(c.id) || uid(), date: s(c.date).slice(0, 10), note: s(c.note), photo: img(c.photo) }))
       : [],
+    deletedAt: +r.deletedAt > 0 ? +r.deletedAt : null, // ゴミ箱に入れた日時
     createdAt: +r.createdAt || Date.now(),
     updatedAt: +r.updatedAt || Date.now(),
   };
+}
+
+/* ---------------- ゴミ箱(削除したレシピは30日間残す) ---------------- */
+const TRASH_DAYS = 30;
+state.trash = [];
+
+// 有効なレシピとゴミ箱に振り分ける
+function placeRecipe(r) {
+  state.recipes = state.recipes.filter((x) => x.id !== r.id);
+  state.trash = state.trash.filter((x) => x.id !== r.id);
+  (r.deletedAt ? state.trash : state.recipes).push(r);
+}
+
+const trashDaysLeft = (r) => Math.max(0, TRASH_DAYS - Math.floor((Date.now() - r.deletedAt) / 864e5));
+
+async function moveToTrash(id) {
+  const r = getRecipe(id);
+  if (!r) return false;
+  const trashed = { ...r, deletedAt: Date.now() };
+  try { await repo.put(trashed); } catch (e) { toast(saveErrorText(e)); return false; }
+  placeRecipe(trashed);
+  renderTrash();
+  return true;
+}
+
+async function restoreRecipe(id) {
+  const r = state.trash.find((x) => x.id === id);
+  if (!r) return;
+  const back = { ...r, deletedAt: null };
+  try { await repo.put(back); } catch (e) { return toast(saveErrorText(e)); }
+  placeRecipe(back);
+  renderChips();
+  renderGrid();
+  renderTrash();
+  toast(`「${r.name}」を元に戻しました`);
+}
+
+async function deleteForever(ids) {
+  for (const id of ids) {
+    await repo.del(id);
+    state.trash = state.trash.filter((x) => x.id !== id);
+  }
+  renderTrash();
+}
+
+// 30日を過ぎたものは自動で完全に削除
+function purgeTrash() {
+  const old = state.trash.filter((r) => trashDaysLeft(r) <= 0).map((r) => r.id);
+  if (old.length) deleteForever(old);
 }
 
 function saveErrorText(e) {
@@ -854,8 +912,9 @@ function closeOverlay(ov) {
   if (ov.getAttribute('aria-hidden') === 'true') return;
   if (ov._hist && history.state && history.state.ov === ov.id) {
     ignorePop++;
-    history.back();
+    history.go(-(1 + (ov._extra || 0)));
   }
+  ov._extra = 0;
   closeOverlayNow(ov);
 }
 
@@ -883,7 +942,11 @@ document.querySelectorAll('.overlay').forEach((ov) => {
 window.addEventListener('popstate', (e) => {
   if (ignorePop > 0) { ignorePop--; return; }
   const top = overlayStack.filter((o) => o._hist).pop();
-  if (top) { closeOverlayNow(top); return; }
+  if (top) {
+    if (top._onBack && top._onBack()) return;
+    closeOverlayNow(top);
+    return;
+  }
   closeMenu(true);
   onHistoryTab((e.state && e.state.tab) || 'recipes');
 });
@@ -1298,8 +1361,8 @@ delBtn.addEventListener('click', async () => {
   closeOverlay($('#detailOv'));
   if (pip.recipeId === id) closePip();
   const node = cardNodes.get(id);
-  await repo.del(id);
-  state.recipes = state.recipes.filter((r) => r.id !== id);
+  const name = (getRecipe(id) || {}).name;
+  if (!(await moveToTrash(id))) return;
   const finish = () => { removeCardNode(id); renderChips(); renderGrid(); };
   if (node && !node.hidden) {
     node.animate(
@@ -1307,7 +1370,7 @@ delBtn.addEventListener('click', async () => {
       { duration: 320, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }
     ).onfinish = finish;
   } else finish();
-  toast('削除しました');
+  toast(`「${name}」をゴミ箱に移動しました`, { label: '元に戻す', run: () => restoreRecipe(id) });
 });
 
 $('#editBtn').addEventListener('click', () => {
@@ -1778,7 +1841,7 @@ function setupPicker(box, listKey, key) {
 }
 const renderGenrePicks = setupPicker($('#genrePicks'), 'genres', 'formGenre');
 const renderCoursePicks = setupPicker($('#coursePicks'), 'courses', 'formCourse');
-document.querySelectorAll('[data-edit-cats]').forEach((b) => b.addEventListener('click', () => openSettings(b)));
+document.querySelectorAll('[data-edit-cats]').forEach((b) => b.addEventListener('click', () => openSettings(b, b.dataset.editCats)));
 
 function setPhoto(dataUrl) {
   state.photo = dataUrl;
@@ -1980,7 +2043,7 @@ $('#importFile').addEventListener('change', async (e) => {
       try { await repo.put(r); } catch { continue; } // 大きすぎる1件があっても残りは読み込む
       ok++;
       removeCardNode(r.id);
-      state.recipes = state.recipes.filter((x) => x.id !== r.id).concat(r);
+      placeRecipe(r);
     }
     renderChips();
     renderGrid();
@@ -2071,6 +2134,7 @@ function saveSettings() {
 // 選択肢が変わったら、開いている画面に反映する
 function settingsChanged() {
   renderCatEditors();
+  renderSettingsSummary();
   renderChips();
   if ($('#formOv').getAttribute('aria-hidden') === 'false') { renderGenrePicks(); renderCoursePicks(); }
   if ($('#fridgeOv').getAttribute('aria-hidden') === 'false') renderFridge();
@@ -2136,11 +2200,115 @@ document.querySelectorAll('.add-row').forEach((f) => f.addEventListener('submit'
   saveSettings();
 }));
 
-function openSettings(origin) {
+/* 設定:一覧 → 各項目の画面。進むたびに履歴を積み、「戻る」で一覧に戻る */
+const setOv = $('#settingsOv');
+let setPage = 'main';
+
+function showSetPage(page, dir) {
+  setOv.querySelectorAll('.set-page').forEach((p) => { p.hidden = p.dataset.page !== page; });
+  const cur = setOv.querySelector(`.set-page[data-page="${page}"]`);
+  if (dir) {
+    cur.animate(
+      [{ opacity: 0, transform: `translateX(${dir === 'back' ? -28 : 28}px)` }, { opacity: 1, transform: 'none' }],
+      { duration: 340, easing: 'cubic-bezier(.32,.72,0,1)' }
+    );
+  }
+  setPage = page;
+  if (page === 'trash') renderTrash();
+  setOv.scrollTop = 0;
+}
+
+function goSetPage(page) {
+  history.pushState({ ov: 'settingsOv', page }, '');
+  setOv._extra = (setOv._extra || 0) + 1;
+  showSetPage(page, 'forward');
+}
+
+setOv._onBack = () => {
+  if (setPage === 'main') return false;
+  setOv._extra = Math.max(0, (setOv._extra || 0) - 1);
+  showSetPage('main', 'back');
+  return true;
+};
+setOv.querySelectorAll('[data-page-to]').forEach((b) => b.addEventListener('click', () => goSetPage(b.dataset.pageTo)));
+setOv.querySelectorAll('[data-page-back]').forEach((b) => b.addEventListener('click', () => history.back()));
+
+// 一覧に、それぞれの今の中身を短く出す
+function renderSettingsSummary() {
+  const join = (list) => (list.length ? list.join('・') : 'なし');
+  $('#nlGenres').textContent = join(state.settings.genres);
+  $('#nlCourses').textContent = join(state.settings.courses);
+  $('#nlStaples').textContent = Array.isArray(state.settings.staples) ? `${state.settings.staples.length}品` : '自動';
+  $('#nlTrash').textContent = state.trash.length ? `${state.trash.length}件` : '';
+}
+
+// page を渡すと、その項目の画面を開いた状態で始める(登録画面の「編集」など)
+function openSettings(origin, page) {
   renderAccount();
   renderCatEditors();
-  openOverlay($('#settingsOv'), origin);
+  renderSettingsSummary();
+  setOv._extra = 0;
+  showSetPage('main');
+  openOverlay(setOv, origin);
+  if (page) goSetPage(page);
 }
+
+/* ゴミ箱の画面 */
+function renderTrash() {
+  renderSettingsSummary();
+  if (setPage !== 'trash') return;
+  const ul = $('#trashList');
+  ul.innerHTML = '';
+  [...state.trash].sort((a, b) => b.deletedAt - a.deletedAt).forEach((r) => {
+    const li = el('li', 'trash-item');
+    const thumb = el('span', 'pick-thumb');
+    const img = heroImage(r);
+    if (img) { img.classList.add('loaded'); thumb.append(img); } else thumb.textContent = '🍽';
+    const text = el('span', 'tr-text');
+    const left = trashDaysLeft(r);
+    text.append(el('b', null, r.name), el('span', null, left <= 1 ? 'まもなく完全に削除されます' : `あと${left}日で完全に削除`));
+    const restore = el('button', 'btn small', '元に戻す');
+    restore.type = 'button';
+    restore.onclick = () => restoreRecipe(r.id);
+    // 完全に削除は取り消せないので2段階(3秒で戻る)
+    const del = el('button', 'tr-del');
+    del.type = 'button';
+    del.innerHTML = TRASH_ICON;
+    del.setAttribute('aria-label', `「${r.name}」を完全に削除`);
+    del.onclick = () => {
+      if (!del.classList.contains('confirm')) {
+        del.classList.add('confirm');
+        del.append(el('span', null, '完全に削除'));
+        setTimeout(() => { if (del.isConnected) { del.classList.remove('confirm'); del.innerHTML = TRASH_ICON; } }, 3000);
+        return;
+      }
+      deleteForever([r.id]);
+      toast(`「${r.name}」を完全に削除しました`);
+    };
+    li.append(thumb, text, restore, del);
+    ul.append(li);
+  });
+  $('#trashNone').hidden = state.trash.length > 0;
+  const clear = $('#trashClear');
+  clear.hidden = !state.trash.length;
+  clear.classList.remove('confirm');
+  clear.textContent = 'ゴミ箱を空にする';
+}
+
+const TRASH_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 7h16M9.5 3.5h5M6 7l.9 12.6A1.5 1.5 0 0 0 8.4 21h7.2a1.5 1.5 0 0 0 1.5-1.4L18 7M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+$('#trashClear').addEventListener('click', (e) => {
+  const b = e.currentTarget;
+  if (!b.classList.contains('confirm')) {
+    b.classList.add('confirm');
+    b.textContent = `${state.trash.length}件を完全に削除する`;
+    setTimeout(() => { b.classList.remove('confirm'); b.textContent = 'ゴミ箱を空にする'; }, 3000);
+    return;
+  }
+  const n = state.trash.length;
+  deleteForever(state.trash.map((r) => r.id));
+  toast(`${n}件を完全に削除しました`);
+});
 $('#menuBtn').addEventListener('click', (e) => openSettings(e.currentTarget));
 
 function cloudReady() {
@@ -2195,6 +2363,7 @@ function clearRecipes() {
   cardNodes.forEach((n) => n.remove());
   cardNodes.clear();
   state.recipes = [];
+  state.trash = [];
   state.loaded = false;
   resetPlanData();
   renderChips();
@@ -2227,10 +2396,11 @@ window.RB = {
   onSnapshot({ changes, fromCache, pending }) {
     let changed = !state.loaded;
     for (const c of changes) {
-      const old = getRecipe(c.id);
+      const old = getRecipe(c.id) || state.trash.find((x) => x.id === c.id);
       if (c.type === 'removed') {
         if (!old) continue;
         state.recipes = state.recipes.filter((x) => x.id !== c.id);
+        state.trash = state.trash.filter((x) => x.id !== c.id);
         removeCardNode(c.id);
         if (state.detailId === c.id) closeOverlay($('#detailOv'));
         changed = true;
@@ -2238,22 +2408,26 @@ window.RB = {
       }
       const r = normalizeRecipe(c.data);
       if (needsMigration(c.data) && !pending) repo.put(r).catch(() => {});
-      if (!old) {
-        state.recipes.push(r);
-        changed = true;
-      } else if (JSON.stringify(old) !== JSON.stringify(r)) {
-        // ほかの端末での変更を反映
-        state.recipes = state.recipes.map((x) => (x.id === r.id ? r : x));
-        refreshCard(r.id);
-        refreshOpenDetail(r);
+      if (!old || JSON.stringify(old) !== JSON.stringify(r)) {
+        // ほかの端末での変更を反映(ゴミ箱に入れた・戻したも含む)
+        const wasActive = !!getRecipe(r.id);
+        placeRecipe(r);
+        if (r.deletedAt) {
+          removeCardNode(r.id);
+          if (state.detailId === r.id) closeOverlay($('#detailOv'));
+        } else if (wasActive) {
+          refreshCard(r.id);
+          refreshOpenDetail(r);
+        }
         changed = true;
       }
     }
     if (!state.loaded) {
       state.loaded = true;
+      purgeTrash();
       handlePendingShare();
     }
-    if (changed) { renderChips(); renderGrid(); }
+    if (changed) { renderChips(); renderGrid(); renderTrash(); }
     sync.fromCache = fromCache;
     sync.pending = pending;
     if (sync.state === 'error' && !fromCache) sync.state = 'syncing';
@@ -2326,9 +2500,12 @@ async function loadLocal() {
   repo.mode = 'local';
   try {
     const raw = await db.all();
-    state.recipes = raw.map(normalizeRecipe);
+    state.recipes = [];
+    state.trash = [];
+    raw.map(normalizeRecipe).forEach(placeRecipe);
+    purgeTrash();
     // 旧形式(category)のデータを新形式で保存し直す
-    for (const r of raw) if (needsMigration(r)) await db.put(getRecipe(r.id));
+    for (const r of raw) if (needsMigration(r)) await db.put(getRecipe(r.id) || state.trash.find((x) => x.id === r.id));
   } catch {
     toast('このブラウザでは保存機能が使えません');
   }

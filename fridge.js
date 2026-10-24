@@ -237,7 +237,7 @@ async function addMissingToShop(x) {
 }
 
 $('#fridgeBtn').addEventListener('click', (e) => openFridge(e.currentTarget));
-$('#fridgeEditStaples').addEventListener('click', (e) => openSettings(e.currentTarget));
+$('#fridgeEditStaples').addEventListener('click', (e) => openSettings(e.currentTarget, 'staples'));
 $('#fridgeAdd').addEventListener('submit', (e) => {
   e.preventDefault();
   const v = $('#fridgeInput').value;
